@@ -177,6 +177,43 @@ const CoachDashboard = () => {
     }
   };
 
+  const duplicateWorkout = async () => {
+    if (!selectedWorkout) return;
+    try {
+      const base = isSupabaseConfigured && user?.id ? await createWorkoutRecord(user.id) : { ...selectedWorkout, id: makeId() };
+      const copy: Workout = {
+        ...selectedWorkout,
+        id: base.id,
+        title: `${selectedWorkout.title} — копия`,
+        weeklyTemplate: selectedWorkout.weeklyTemplate ? JSON.parse(JSON.stringify(selectedWorkout.weeklyTemplate)) : undefined,
+      };
+      if (isSupabaseConfigured && user?.id) await updateWorkoutRecord(user.id, copy);
+      const next = [copy, ...workouts];
+      saveWorkouts(next);
+      setSelectedWorkoutId(copy.id);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось дублировать план");
+    }
+  };
+
+  const assignWorkoutToClients = async (workout: Workout, clientIds: string[]) => {
+    if (!clientIds.length) return;
+    const weeklyPlan = workout.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, workout.id])) : {};
+    const nextClients = clients.map((client) => clientIds.includes(client.id) ? { ...client, assignedWorkoutId: workout.id, weeklyPlan, plan: workout.title } : client);
+    saveClients(nextClients);
+    if (isSupabaseConfigured && user?.id) {
+      try {
+        for (const client of nextClients.filter((item) => clientIds.includes(item.id))) {
+          await updateClientRecord(user.id, client);
+          await replaceWeeklyPlanRecord(user.id, client.id, client.weeklyPlan || {});
+        }
+        setSyncStatus("План назначен выбранным клиентам");
+      } catch (error) {
+        setSyncStatus(error instanceof Error ? error.message : "Не удалось назначить план");
+      }
+    }
+  };
+
   const createClientFromApplication = async (application: Application) => {
     const client: Client = {
       id: makeId(),
@@ -249,7 +286,7 @@ const CoachDashboard = () => {
         {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} onChange={updateWorkout} onDelete={deleteWorkout} /></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
@@ -432,9 +469,10 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onChange: (patch: Partial<Workout>) => void; onDelete: () => void }) => {
+const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[]) => void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
+  const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
 
   useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
 
@@ -483,6 +521,8 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
     setStatus("");
   };
 
+  const toggleBulkClient = (clientId: string) => setBulkClientIds((current) => current.includes(clientId) ? current.filter((id) => id !== clientId) : [...current, clientId]);
+
   const save = () => {
     onChange(draft);
     setStatus("План сохранён. Теперь его можно назначать клиенту.");
@@ -528,6 +568,21 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
         </div>
       </div>
 
+      <div className="app-card rounded-3xl p-4">
+        <h3 className="text-xl font-bold">Массовое назначение</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери клиентов, которым нужно назначить этот план сразу.</p>
+        {!clients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Клиентов пока нет.</p>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {clients.map((client) => (
+            <label key={client.id} className="app-card rounded-2xl p-3 flex items-center gap-3">
+              <input type="checkbox" checked={bulkClientIds.includes(client.id)} onChange={() => toggleBulkClient(client.id)} />
+              <span>{client.name}</span>
+            </label>
+          ))}
+        </div>
+        <button type="button" disabled={!bulkClientIds.length} onClick={() => onBulkAssign(draft, bulkClientIds)} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Назначить выбранным</button>
+      </div>
+
       <div className="sticky bottom-4 z-20 glass rounded-3xl p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
         <div>
           <h3 className="font-bold">Сохранение плана</h3>
@@ -536,6 +591,7 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
         </div>
         <div className="flex gap-3 flex-wrap">
           <button onClick={save} className="rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить план</button>
+          <button onClick={onDuplicate} className="rounded-full px-5 py-3 glass">Дублировать план</button>
           <button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить план</button>
         </div>
       </div>
@@ -598,7 +654,7 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
       <div className="space-y-4">
         <div className="app-card rounded-3xl p-4">
           <h3 className="text-xl font-bold">Фото на главной</h3>
-          <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать вертикальное фото 4:5 или 3:4. Фото будет обрезано по рамке, чтобы на сайте не было белых полей. Лучше загружать уже обрезанный портрет.</p>
+          <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать уже обрезанный вертикальный портрет 4:5 или 3:4.</p>
           <div className="mt-4 aspect-[4/5] rounded-3xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
             {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center rounded-2xl" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
           </div>

@@ -112,3 +112,10 @@ using (
     and clients.coach_id = auth.uid()
   )
 );
+
+
+-- Исправление колонок заявок для стабильной отправки формы
+alter table public.applications add column if not exists start_timeline text;
+alter table public.applications add column if not exists looking_for text;
+alter table public.applications add column if not exists ready_to_invest text;
+grant select, insert, update, delete on public.applications to anon, authenticated, service_role;

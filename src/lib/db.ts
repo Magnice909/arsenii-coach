@@ -1,6 +1,24 @@
 import { Client, DayWorkout, makeId, Message, SiteSettings, WeeklyTemplate, Workout } from "./storage";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
+
+const getCurrentWeekRange = () => {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
+};
+
+const calculateProgress = (scheduledDays: string[], completedDays: string[]) => {
+  const total = scheduledDays.length;
+  if (!total) return 0;
+  const completed = new Set(completedDays.filter((day) => scheduledDays.includes(day))).size;
+  return Math.min(100, Math.round((completed / total) * 100));
+};
+
 const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record<string, string> = {}): Client => {
   const assignedWorkoutId = Object.values(weeklyPlan)[0] || "";
   const workout = workouts.find((item) => item.id === assignedWorkoutId);
@@ -75,7 +93,24 @@ export const fetchCoachData = async (coachId: string) => {
     planByClient[row.client_id][row.day_of_week] = row.workout_id;
   }
 
-  const clients = (clientRows || []).map((row) => dbClientToClient(row, workouts, planByClient[row.id] || {}));
+  const clientIds = (clientRows || []).map((row) => row.id);
+  const { start, end } = getCurrentWeekRange();
+  const { data: completionRows } = clientIds.length
+    ? await supabase.from("workout_completions").select("client_id, day_of_week").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
+    : { data: [] as any[] };
+
+  const completedByClient: Record<string, string[]> = {};
+  for (const row of completionRows || []) {
+    completedByClient[row.client_id] = completedByClient[row.client_id] || [];
+    completedByClient[row.client_id].push(row.day_of_week);
+  }
+
+  const clients = (clientRows || []).map((row) => {
+    const weeklyPlan = planByClient[row.id] || {};
+    const client = dbClientToClient(row, workouts, weeklyPlan);
+    client.progress = calculateProgress(Object.keys(weeklyPlan), completedByClient[row.id] || []);
+    return client;
+  });
   return { clients, workouts };
 };
 
@@ -167,7 +202,19 @@ export const fetchClientData = async (userId: string) => {
   const weeklyPlan: Record<string, string> = {};
   for (const row of planRows || []) weeklyPlan[row.day_of_week] = row.workout_id;
 
-  return { client: dbClientToClient(clientRow, workouts, weeklyPlan), workouts };
+  const { start, end } = getCurrentWeekRange();
+  const { data: completionRows } = await supabase
+    .from("workout_completions")
+    .select("day_of_week")
+    .eq("client_id", clientRow.id)
+    .eq("user_id", userId)
+    .gte("completed_date", start)
+    .lte("completed_date", end);
+
+  const client = dbClientToClient(clientRow, workouts, weeklyPlan);
+  client.progress = calculateProgress(Object.keys(weeklyPlan), (completionRows || []).map((row: any) => row.day_of_week));
+
+  return { client, workouts };
 };
 
 export const fetchSiteSettingsDb = async (): Promise<SiteSettings | null> => {
@@ -253,4 +300,46 @@ export const markWorkoutCompleted = async (clientId: string, workoutId: string, 
   });
 
   if (error && !error.message.toLowerCase().includes("duplicate")) throw error;
+};
+
+
+export type CompletionHistoryItem = {
+  id: string;
+  dayOfWeek: string;
+  completedDate: string;
+  workoutTitle: string;
+  dayWorkoutTitle: string;
+  exerciseCount: number;
+};
+
+export const fetchClientCompletionHistory = async (clientId: string, userId: string): Promise<CompletionHistoryItem[]> => {
+  const { data, error } = await supabase
+    .from("workout_completions")
+    .select("id, workout_id, day_of_week, completed_date, created_at")
+    .eq("client_id", clientId)
+    .eq("user_id", userId)
+    .order("completed_date", { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+  const rows = data || [];
+  const workoutIds = [...new Set(rows.map((row: any) => row.workout_id))];
+  const { data: workoutRows, error: workoutsError } = workoutIds.length
+    ? await supabase.from("workouts").select("*").in("id", workoutIds)
+    : { data: [], error: null } as any;
+  if (workoutsError) throw workoutsError;
+
+  const workouts = (workoutRows || []).map(dbWorkoutToWorkout);
+  return rows.map((row: any) => {
+    const workout = workouts.find((item: Workout) => item.id === row.workout_id);
+    const dayWorkout = getDayWorkout(workout, row.day_of_week);
+    return {
+      id: row.id,
+      dayOfWeek: row.day_of_week,
+      completedDate: row.completed_date,
+      workoutTitle: workout?.title || "План",
+      dayWorkoutTitle: dayWorkout?.title || "Тренировка",
+      exerciseCount: dayWorkout?.exercises.length || 0,
+    };
+  });
 };

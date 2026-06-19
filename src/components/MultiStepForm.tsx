@@ -39,7 +39,21 @@ const MultiStepForm = () => {
     setSubmitError("");
     if (!isValidTelegram(answers.telegram)) { setTelegramError("Введите Telegram, например @username"); return; }
 
-    const application = { ...answers, created_at: new Date().toISOString(), status: "Новая" };
+    const application = {
+      name: answers.name,
+      goal: answers.goal,
+      duration: answers.duration,
+      obstacle: answers.obstacle,
+      commitment: answers.commitment,
+      start_timeline: answers.startTimeline,
+      looking_for: answers.lookingFor,
+      ready_to_invest: answers.readyToInvest,
+      telegram: answers.telegram,
+      email: answers.email,
+      instagram: answers.instagram,
+      created_at: new Date().toISOString(),
+      status: "Новая",
+    };
     setIsSubmitting(true);
 
     if (isSupabaseConfigured) {

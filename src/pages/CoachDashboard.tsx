@@ -3,6 +3,7 @@ import { enablePushNotifications } from "../lib/push";
 import { createClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
+import { createClientRecord, createWorkoutRecord, deleteClientRecord, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord } from "../lib/db";
 
 type Application = {
   id: string;
@@ -40,13 +41,40 @@ const CoachDashboard = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationsStatus, setApplicationsStatus] = useState("");
   const [pushStatus, setPushStatus] = useState("");
+  const [syncStatus, setSyncStatus] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id || "");
   const [selectedWorkoutId, setSelectedWorkoutId] = useState(workouts[0]?.id || "");
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0];
   const selectedWorkout = workouts.find((w) => w.id === selectedWorkoutId) || workouts[0];
   const average = useMemo(() => clients.length ? Math.round(clients.reduce((sum, c) => sum + c.progress, 0) / clients.length) : 0, [clients]);
 
+  const loadAllData = async () => {
+    if (!isSupabaseConfigured || !user?.id) return;
+    setSyncStatus("Синхронизируем данные...");
+    try {
+      const [{ clients: syncedClients, workouts: syncedWorkouts }, syncedSettings, syncedMessages] = await Promise.all([
+        fetchCoachData(user.id),
+        fetchSiteSettingsDb(),
+        fetchCoachNotifications(),
+      ]);
+      updateClients(syncedClients);
+      setClients(syncedClients);
+      updateWorkouts(syncedWorkouts);
+      setWorkouts(syncedWorkouts);
+      updateMessages(syncedMessages);
+      setMessages(syncedMessages);
+      if (syncedSettings) { updateSiteSettingsState(syncedSettings); setSiteSettings(syncedSettings); }
+      setSelectedClientId(syncedClients[0]?.id || "");
+      setSelectedWorkoutId(syncedWorkouts[0]?.id || "");
+      setSyncStatus("");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось синхронизировать данные");
+    }
+  };
+
+  useEffect(() => { loadAllData(); }, [user?.id]);
   useEffect(() => { if (tab === "applications") loadApplications(); }, [tab]);
+  useEffect(() => { if (tab === "messages" && isSupabaseConfigured) fetchCoachNotifications().then((next) => { updateMessages(next); setMessages(next); }).catch(() => {}); }, [tab]);
 
   const saveClients = (next: Client[]) => { updateClients(next); setClients(next); };
   const saveWorkouts = (next: Workout[]) => { updateWorkouts(next); setWorkouts(next); };
@@ -79,43 +107,74 @@ const CoachDashboard = () => {
 
   const updateClient = (patch: Partial<Client>) => {
     if (!selectedClient) return;
-    saveClients(clients.map((client) => client.id === selectedClient.id ? { ...client, ...patch } : client));
-  };
-
-  const addClient = () => {
-    const client = emptyClient(workouts[0]?.id || "");
-    const next = [client, ...clients];
+    const updated = { ...selectedClient, ...patch };
+    const next = clients.map((client) => client.id === selectedClient.id ? updated : client);
     saveClients(next);
-    setSelectedClientId(client.id);
-    setTab("clients");
+
+    if (isSupabaseConfigured && user?.id) {
+      updateClientRecord(user.id, updated)
+        .then(() => {
+          if (patch.weeklyPlan || patch.assignedWorkoutId) return replaceWeeklyPlanRecord(user.id!, updated.id, updated.weeklyPlan || {});
+        })
+        .catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить клиента"));
+    }
   };
 
-  const deleteClient = () => {
+  const addClient = async () => {
+    try {
+      const client = isSupabaseConfigured && user?.id ? await createClientRecord(user.id) : emptyClient(workouts[0]?.id || "");
+      const next = [client, ...clients];
+      saveClients(next);
+      setSelectedClientId(client.id);
+      setTab("clients");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось добавить клиента");
+    }
+  };
+
+  const deleteClient = async () => {
     if (!selectedClient || !confirm(`Удалить клиента ${selectedClient.name}?`)) return;
-    const next = clients.filter((client) => client.id !== selectedClient.id);
-    saveClients(next);
-    setSelectedClientId(next[0]?.id || "");
+    try {
+      if (isSupabaseConfigured && user?.id) await deleteClientRecord(user.id, selectedClient.id);
+      const next = clients.filter((client) => client.id !== selectedClient.id);
+      saveClients(next);
+      setSelectedClientId(next[0]?.id || "");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось удалить клиента");
+    }
   };
 
   const updateWorkout = (patch: Partial<Workout>) => {
     if (!selectedWorkout) return;
-    saveWorkouts(workouts.map((workout) => workout.id === selectedWorkout.id ? { ...workout, ...patch } : workout));
-  };
-
-  const addWorkout = () => {
-    const workout = emptyWorkout();
-    const next = [workout, ...workouts];
+    const updated = { ...selectedWorkout, ...patch };
+    const next = workouts.map((workout) => workout.id === selectedWorkout.id ? updated : workout);
     saveWorkouts(next);
-    setSelectedWorkoutId(workout.id);
-    setTab("workouts");
+    if (isSupabaseConfigured && user?.id) updateWorkoutRecord(user.id, updated).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить тренировку"));
   };
 
-  const deleteWorkout = () => {
+  const addWorkout = async () => {
+    try {
+      const workout = isSupabaseConfigured && user?.id ? await createWorkoutRecord(user.id) : emptyWorkout();
+      const next = [workout, ...workouts];
+      saveWorkouts(next);
+      setSelectedWorkoutId(workout.id);
+      setTab("workouts");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось создать план");
+    }
+  };
+
+  const deleteWorkout = async () => {
     if (!selectedWorkout || workouts.length <= 1) return alert("Нельзя удалить последнюю тренировку");
     if (!confirm(`Удалить тренировку ${selectedWorkout.title}?`)) return;
-    const next = workouts.filter((workout) => workout.id !== selectedWorkout.id);
-    saveWorkouts(next);
-    setSelectedWorkoutId(next[0]?.id || "");
+    try {
+      if (isSupabaseConfigured && user?.id) await deleteWorkoutRecord(user.id, selectedWorkout.id);
+      const next = workouts.filter((workout) => workout.id !== selectedWorkout.id);
+      saveWorkouts(next);
+      setSelectedWorkoutId(next[0]?.id || "");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось удалить план");
+    }
   };
 
   const createClientFromApplication = async (application: Application) => {
@@ -135,13 +194,19 @@ const CoachDashboard = () => {
       weeklyPlan: {},
     };
 
-    saveClients([client, ...clients]);
-    setSelectedClientId(client.id);
-    setTab("clients");
-
-    if (isSupabaseConfigured) {
-      await supabase.from("applications").update({ status: "Добавлена в клиенты" }).eq("id", application.id);
-      loadApplications();
+    try {
+      const createdClient = isSupabaseConfigured && user?.id ? await createClientRecord(user.id) : client;
+      const finalClient = { ...createdClient, ...client, id: createdClient.id };
+      saveClients([finalClient, ...clients]);
+      setSelectedClientId(finalClient.id);
+      setTab("clients");
+      if (isSupabaseConfigured && user?.id) {
+        await updateClientRecord(user.id, finalClient);
+        await supabase.from("applications").update({ status: "Добавлена в клиенты" }).eq("id", application.id);
+        loadApplications();
+      }
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось добавить заявку в клиенты");
     }
   };
 
@@ -171,6 +236,8 @@ const CoachDashboard = () => {
           <div className="flex gap-3 flex-wrap"><button onClick={addClient} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить клиента</button><button onClick={addWorkout} className="rounded-full px-5 py-3 glass">Создать план</button></div>
         </header>
 
+        {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4" style={{ color: "#ffb4c1" }}>{syncStatus}</div>}
+
         {tab === "overview" && <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} /></div>
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} /></Panel></div>
@@ -185,7 +252,7 @@ const CoachDashboard = () => {
         {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} onChange={updateWorkout} onDelete={deleteWorkout} /></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
-        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); }} /></Panel>}
+        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
       </section>
     </main>
   );

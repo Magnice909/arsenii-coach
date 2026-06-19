@@ -1,29 +1,69 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { sendCoachPush } from "../lib/push";
-import { getClients, getMessages, getUser, getWorkouts, logout, Message, setMessages } from "../lib/storage";
+import { createNotification, fetchClientData } from "../lib/db";
+import { Client, getUser, logout, Workout } from "../lib/storage";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 const ClientDashboard = () => {
   const user = getUser();
   const [tab, setTab] = useState("today");
-  const [messages, updateMessages] = useState<Message[]>(getMessages());
-  const clients = getClients().map((client) => ({ ...client, weeklyPlan: client.weeklyPlan || { "Понедельник": client.assignedWorkoutId } }));
-  const workouts = getWorkouts();
-  const client = useMemo(() => clients.find((c) => c.telegram === user?.telegram) || clients[0], [clients, user?.telegram]);
-  const weeklyIds = Object.values(client?.weeklyPlan || {});
-  const workout = workouts.find((w) => w.id === weeklyIds[0]) || workouts.find((w) => w.id === client?.assignedWorkoutId) || workouts[0];
+  const [client, setClient] = useState<Client | null>(null);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  if (!client || !workout) {
-    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">План пока не назначен</h1><p className="mt-3" style={{ color: "var(--ink-2)" }}>Тренер ещё не добавил ваш план тренировок. Свяжитесь с тренером в Telegram.</p><button onClick={() => { logout(); window.location.hash = "/"; }} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
+  const weeklyIds = Object.values(client?.weeklyPlan || {});
+  const workout = useMemo(() => workouts.find((w) => w.id === weeklyIds[0]) || workouts.find((w) => w.id === client?.assignedWorkoutId) || workouts[0], [workouts, weeklyIds, client?.assignedWorkoutId]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user?.id || !isSupabaseConfigured) {
+        setError("Данные клиента доступны после входа через Supabase.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await fetchClientData(user.id);
+        if (!data) {
+          setClient(null);
+          setWorkouts([]);
+        } else {
+          setClient(data.client);
+          setWorkouts(data.workouts);
+        }
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить план клиента");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [user?.id]);
+
+  const exit = () => { logout(); window.location.hash = "/"; };
+
+  if (loading) {
+    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Загружаем план...</h1></section></main>;
   }
 
-  const markDone = () => {
-    const nextMessages = [{ id: String(Date.now()), from: user?.name || client.name, text: `Выполнил тренировку ${workout.title}`, time: "только что" }, ...messages].slice(0, 8);
-    updateMessages(nextMessages);
-    setMessages(nextMessages);
-    sendCoachPush("Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${workout.title}`);
-    alert("Тренировка отмечена. Арсений увидит уведомление в кабинете тренера.");
+  if (error) {
+    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Ошибка загрузки</h1><p className="mt-3" style={{ color: "#ff8a98" }}>{error}</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
+  }
+
+  if (!client || !workout) {
+    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">План пока не назначен</h1><p className="mt-3" style={{ color: "var(--ink-2)" }}>Тренер ещё не назначил вам план тренировок в Supabase. Свяжитесь с тренером в Telegram.</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
+  }
+
+  const markDone = async () => {
+    try {
+      if (client.coachId) await createNotification(client.coachId, "Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${workout.title}`, "/#/coach");
+      sendCoachPush("Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${workout.title}`);
+      alert("Тренировка отмечена. Арсений увидит уведомление в кабинете тренера.");
+    } catch {
+      alert("Тренировка отмечена, но уведомление не удалось отправить.");
+    }
   };
-  const exit = () => { logout(); window.location.hash = "/"; };
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-[270px_1fr]" style={{ background: "var(--bg)" }}>
@@ -44,14 +84,13 @@ const ClientDashboard = () => {
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={client.nextWorkout || "Не назначено"} /></div></Panel>}
         {tab === "progress" && <Panel title="Мой прогресс" subtitle="обновляется тренером"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
-        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram. Для продакшена можно добавить кнопку, которая будет открывать чат @president_h.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a></Panel>}
+        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a></Panel>}
       </section>
     </main>
   );
 };
 
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-
 const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, string>; workouts: { id: string; title: string; focus: string; exercises: string[] }[] }) => <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{weekDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); return <div key={day} className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{workout ? workout.title : "Отдых"}</b>{workout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{workout.focus || `${workout.exercises.length} упражнений`}</p>}</div>; })}</div>;
 const Metric = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-2xl mt-2 block">{value}</b></div>;

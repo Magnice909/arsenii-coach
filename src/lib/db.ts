@@ -1,0 +1,197 @@
+import { Client, makeId, Message, SiteSettings, Workout } from "./storage";
+import { isSupabaseConfigured, supabase } from "./supabase";
+
+const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record<string, string> = {}): Client => {
+  const assignedWorkoutId = Object.values(weeklyPlan)[0] || "";
+  const workout = workouts.find((item) => item.id === assignedWorkoutId);
+  return {
+    id: row.id,
+    userId: row.user_id || undefined,
+    coachId: row.coach_id || undefined,
+    name: row.name || "Клиент",
+    telegram: row.telegram || "@username",
+    email: row.email || "",
+    goal: row.goal || "",
+    plan: workout?.title || "",
+    status: row.status || "Новый",
+    progress: row.progress || 0,
+    nextWorkout: row.next_workout || "",
+    comment: row.comment || "",
+    nutrition: row.nutrition || "",
+    assignedWorkoutId,
+    weeklyPlan,
+  };
+};
+
+const dbWorkoutToWorkout = (row: any): Workout => ({
+  id: row.id,
+  title: row.title || "Тренировка",
+  day: row.day || "Понедельник",
+  focus: row.focus || "",
+  notes: row.notes || "",
+  exercises: Array.isArray(row.exercises) ? row.exercises : [],
+});
+
+export const fetchCoachData = async (coachId: string) => {
+  if (!isSupabaseConfigured) return { clients: [] as Client[], workouts: [] as Workout[] };
+
+  const [{ data: workoutRows, error: workoutsError }, { data: clientRows, error: clientsError }, { data: planRows, error: plansError }] = await Promise.all([
+    supabase.from("workouts").select("*").eq("coach_id", coachId).order("created_at", { ascending: false }),
+    supabase.from("clients").select("*").eq("coach_id", coachId).order("created_at", { ascending: false }),
+    supabase.from("weekly_plans").select("*").eq("coach_id", coachId),
+  ]);
+
+  if (workoutsError) throw workoutsError;
+  if (clientsError) throw clientsError;
+  if (plansError) throw plansError;
+
+  const workouts = (workoutRows || []).map(dbWorkoutToWorkout);
+  const planByClient: Record<string, Record<string, string>> = {};
+  for (const row of planRows || []) {
+    planByClient[row.client_id] = planByClient[row.client_id] || {};
+    planByClient[row.client_id][row.day_of_week] = row.workout_id;
+  }
+
+  const clients = (clientRows || []).map((row) => dbClientToClient(row, workouts, planByClient[row.id] || {}));
+  return { clients, workouts };
+};
+
+export const createClientRecord = async (coachId: string): Promise<Client> => {
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({ coach_id: coachId, name: "Новый клиент", telegram: "@username", email: "", status: "Новый", progress: 0 })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return dbClientToClient(data);
+};
+
+export const updateClientRecord = async (coachId: string, client: Client) => {
+  const { error } = await supabase.from("clients").update({
+    name: client.name,
+    telegram: client.telegram,
+    email: client.email,
+    goal: client.goal,
+    status: client.status,
+    progress: client.progress,
+    next_workout: client.nextWorkout,
+    comment: client.comment,
+    nutrition: client.nutrition,
+    user_id: client.userId || null,
+  }).eq("id", client.id).eq("coach_id", coachId);
+  if (error) throw error;
+};
+
+export const deleteClientRecord = async (coachId: string, clientId: string) => {
+  const { error } = await supabase.from("clients").delete().eq("id", clientId).eq("coach_id", coachId);
+  if (error) throw error;
+};
+
+export const createWorkoutRecord = async (coachId: string): Promise<Workout> => {
+  const { data, error } = await supabase
+    .from("workouts")
+    .insert({ coach_id: coachId, title: "Новая тренировка", day: "Понедельник", focus: "", notes: "", exercises: ["Новое упражнение — 3×10"] })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return dbWorkoutToWorkout(data);
+};
+
+export const updateWorkoutRecord = async (coachId: string, workout: Workout) => {
+  const { error } = await supabase.from("workouts").update({
+    title: workout.title,
+    day: workout.day,
+    focus: workout.focus,
+    notes: workout.notes,
+    exercises: workout.exercises,
+  }).eq("id", workout.id).eq("coach_id", coachId);
+  if (error) throw error;
+};
+
+export const deleteWorkoutRecord = async (coachId: string, workoutId: string) => {
+  const { error } = await supabase.from("workouts").delete().eq("id", workoutId).eq("coach_id", coachId);
+  if (error) throw error;
+};
+
+export const replaceWeeklyPlanRecord = async (coachId: string, clientId: string, weeklyPlan: Record<string, string>) => {
+  const { error: deleteError } = await supabase.from("weekly_plans").delete().eq("client_id", clientId).eq("coach_id", coachId);
+  if (deleteError) throw deleteError;
+
+  const rows = Object.entries(weeklyPlan)
+    .filter(([, workoutId]) => Boolean(workoutId))
+    .map(([day, workoutId]) => ({ coach_id: coachId, client_id: clientId, workout_id: workoutId, day_of_week: day }));
+
+  if (!rows.length) return;
+  const { error } = await supabase.from("weekly_plans").insert(rows);
+  if (error) throw error;
+};
+
+export const fetchClientData = async (userId: string) => {
+  const { data: clientRow, error: clientError } = await supabase.from("clients").select("*").eq("user_id", userId).maybeSingle();
+  if (clientError) throw clientError;
+  if (!clientRow) return null;
+
+  const { data: planRows, error: plansError } = await supabase.from("weekly_plans").select("*").eq("client_id", clientRow.id);
+  if (plansError) throw plansError;
+
+  const workoutIds = [...new Set((planRows || []).map((row) => row.workout_id))];
+  const { data: workoutRows, error: workoutsError } = workoutIds.length
+    ? await supabase.from("workouts").select("*").in("id", workoutIds)
+    : { data: [], error: null } as any;
+  if (workoutsError) throw workoutsError;
+
+  const workouts = (workoutRows || []).map(dbWorkoutToWorkout);
+  const weeklyPlan: Record<string, string> = {};
+  for (const row of planRows || []) weeklyPlan[row.day_of_week] = row.workout_id;
+
+  return { client: dbClientToClient(clientRow, workouts, weeklyPlan), workouts };
+};
+
+export const fetchSiteSettingsDb = async (): Promise<SiteSettings | null> => {
+  const { data, error } = await supabase.from("site_settings").select("*").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    brand: data.brand || "ARSENIICOACH",
+    heroBadge: data.hero_badge || "Сейчас открыт набор на 1:1 сопровождение",
+    heroTitle: data.hero_title || "1:1 онлайн фитнес-коучинг",
+    heroSubtitle: data.hero_subtitle || "",
+    ctaText: data.cta_text || "Оставить заявку",
+    quote: data.quote || "",
+    approachTitle: data.approach_title || "Почему онлайн-сопровождение?",
+    approachText1: data.approach_text_1 || "",
+    approachText2: data.approach_text_2 || "",
+    photoDataUrl: data.photo_url || "",
+  };
+};
+
+export const saveSiteSettingsDb = async (settings: SiteSettings) => {
+  const { error } = await supabase.from("site_settings").upsert({
+    id: 1,
+    brand: settings.brand,
+    hero_badge: settings.heroBadge,
+    hero_title: settings.heroTitle,
+    hero_subtitle: settings.heroSubtitle,
+    cta_text: settings.ctaText,
+    quote: settings.quote,
+    approach_title: settings.approachTitle,
+    approach_text_1: settings.approachText1,
+    approach_text_2: settings.approachText2,
+    photo_url: settings.photoDataUrl,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+};
+
+export const fetchCoachNotifications = async (): Promise<Message[]> => {
+  const { data, error } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(30);
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ id: row.id || makeId(), from: row.title || "Уведомление", text: row.body || "", time: row.created_at ? new Date(row.created_at).toLocaleString("ru-RU") : "" }));
+};
+
+export const createNotification = async (recipientId: string, title: string, body: string, url = "/") => {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const senderId = sessionData.session?.user.id;
+  const { error } = await supabase.from("notifications").insert({ recipient_id: recipientId, sender_id: senderId, title, body, url });
+  if (error) throw error;
+};

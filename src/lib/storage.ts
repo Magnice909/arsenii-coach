@@ -11,6 +11,7 @@ export type User = {
 export type Client = {
   id: string;
   userId?: string;
+  coachId?: string;
   name: string;
   telegram: string;
   email: string;

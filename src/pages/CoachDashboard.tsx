@@ -342,6 +342,15 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
   const [clientPassword, setClientPassword] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const [showClientPassword, setShowClientPassword] = useState(false);
+
+  const generatePassword = () => {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    const password = Array.from({ length: 12 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+    setClientPassword(password);
+    setShowClientPassword(true);
+    setAccountStatus("Новый пароль сгенерирован. Скопируй его и отправь клиенту.");
+  };
 
   const createAccount = async () => {
     setAccountStatus("");
@@ -361,10 +370,10 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
         password: clientPassword,
         name: client.name,
         telegram: client.telegram,
+        userId: client.userId,
       });
       onChange({ userId: created.userId });
-      setClientPassword("");
-      setAccountStatus("Аккаунт клиента создан. Теперь клиент может войти по email и паролю.");
+      setAccountStatus(client.userId ? "Пароль клиента обновлён. Скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Скопируй пароль и отправь клиенту.");
     } catch (error) {
       setAccountStatus(error instanceof Error ? error.message : "Не удалось создать аккаунт клиента");
     } finally {
@@ -388,13 +397,20 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>
           Пароль не сохраняется в коде сайта и не записывается в базу clients. Он передаётся в Supabase Auth через защищённую серверную функцию.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-          <Field label="Временный пароль клиента" type="password" value={clientPassword} onChange={setClientPassword} />
-          <button disabled={isCreatingAccount || Boolean(client.userId)} onClick={createAccount} className="rounded-xl px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
-            {client.userId ? "Аккаунт создан" : isCreatingAccount ? "Создаю..." : "Создать аккаунт"}
+        <div className="grid grid-cols-1 gap-3">
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+            Временный пароль клиента
+            <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
+              <input value={clientPassword} type={showClientPassword ? "text" : "password"} onChange={(e) => setClientPassword(e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+              <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="rounded-xl px-4 glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
+              <button type="button" onClick={generatePassword} className="rounded-xl px-4 glass">Сгенерировать</button>
+            </div>
+          </label>
+          <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="rounded-xl px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            {client.userId ? (isCreatingAccount ? "Обновляю..." : "Обновить пароль") : (isCreatingAccount ? "Создаю..." : "Создать аккаунт")}
           </button>
         </div>
-        {client.userId && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>Клиентский аккаунт привязан к этому клиенту.</p>}
+        {client.userId && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>Клиентский аккаунт привязан. Пароль можно в любой момент сгенерировать заново и обновить.</p>}
         {accountStatus && <p className="text-sm mt-3" style={{ color: accountStatus.includes("создан") ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
       </div>
 

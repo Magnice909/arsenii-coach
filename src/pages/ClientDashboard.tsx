@@ -106,10 +106,10 @@ const ClientDashboard = () => {
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div><div className="eyebrow">Кабинет клиента</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || client.name}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || client.telegram}</p></div>
-          <button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button>
+
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map(e => <label key={e} className="app-card rounded-2xl p-4 flex gap-3 items-center"><input type="checkbox" checked={completedToday} disabled={completedToday} readOnly className="w-5 h-5" /><span>{e}</span></label>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня отдых или упражнения не указаны.</div>}</Panel>}
+        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map(e => <label key={e} className="app-card rounded-2xl p-4 flex gap-3 items-center"><input type="checkbox" checked={completedToday} disabled={completedToday} readOnly className="w-5 h-5" /><span>{e}</span></label>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
                 {tab === "progress" && <Panel title="Мой прогресс" subtitle="обновляется тренером"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div></Panel>}
@@ -122,14 +122,30 @@ const ClientDashboard = () => {
 
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
 const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) => {
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState("all");
+  const plans = Array.from(new Map(history.map((item) => [item.workoutId, item.workoutTitle])).entries());
+  const filteredHistory = selectedWorkoutId === "all" ? history : history.filter((item) => item.workoutId === selectedWorkoutId);
+
   if (!history.length) return <p style={{ color: "var(--ink-2)" }}>Выполненных тренировок пока нет.</p>;
+
   return (
-    <div className="space-y-3">
-      {history.map((item) => (
+    <div className="space-y-4">
+      <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+        Фильтр по плану
+        <select value={selectedWorkoutId} onChange={(event) => setSelectedWorkoutId(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+          <option value="all">Все планы</option>
+          {plans.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+        </select>
+      </label>
+
+      {!filteredHistory.length && <p style={{ color: "var(--ink-2)" }}>По выбранному плану выполненных тренировок пока нет.</p>}
+
+      {filteredHistory.map((item) => (
         <div key={item.id} className="app-card rounded-3xl p-5">
           <p className="text-sm" style={{ color: "var(--ink-3)" }}>{new Date(item.completedDate).toLocaleDateString("ru-RU")} • {item.dayOfWeek}</p>
           <b className="text-xl mt-2 block">{item.dayWorkoutTitle}</b>
           <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{item.workoutTitle} • {item.exerciseCount} упражнений</p>
+          {!!item.exercises.length && <ul className="mt-3 space-y-2">{item.exercises.map((exercise) => <li key={exercise} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)", color: "var(--ink-2)" }}>{exercise}</li>)}</ul>}
         </div>
       ))}
     </div>

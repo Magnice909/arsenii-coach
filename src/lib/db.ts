@@ -12,11 +12,14 @@ const getCurrentWeekRange = () => {
   return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
 };
 
-const calculateProgress = (scheduledDays: string[], completedDays: string[]) => {
-  const total = scheduledDays.length;
-  if (!total) return 0;
-  const completed = new Set(completedDays.filter((day) => scheduledDays.includes(day))).size;
-  return Math.min(100, Math.round((completed / total) * 100));
+const makeProgressKey = (day: string, workoutId: string) => `${day}::${workoutId}`;
+
+const calculateProgress = (scheduledPlan: Record<string, string>, completions: { day_of_week: string; workout_id: string }[]) => {
+  const scheduledKeys = Object.entries(scheduledPlan).map(([day, workoutId]) => makeProgressKey(day, workoutId));
+  if (!scheduledKeys.length) return 0;
+  const completedKeys = new Set(completions.map((row) => makeProgressKey(row.day_of_week, row.workout_id)));
+  const completed = scheduledKeys.filter((key) => completedKeys.has(key)).length;
+  return Math.min(100, Math.round((completed / scheduledKeys.length) * 100));
 };
 
 const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record<string, string> = {}): Client => {
@@ -96,19 +99,19 @@ export const fetchCoachData = async (coachId: string) => {
   const clientIds = (clientRows || []).map((row) => row.id);
   const { start, end } = getCurrentWeekRange();
   const { data: completionRows } = clientIds.length
-    ? await supabase.from("workout_completions").select("client_id, day_of_week").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
+    ? await supabase.from("workout_completions").select("client_id, day_of_week, workout_id").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
     : { data: [] as any[] };
 
-  const completedByClient: Record<string, string[]> = {};
+  const completedByClient: Record<string, { day_of_week: string; workout_id: string }[]> = {};
   for (const row of completionRows || []) {
     completedByClient[row.client_id] = completedByClient[row.client_id] || [];
-    completedByClient[row.client_id].push(row.day_of_week);
+    completedByClient[row.client_id].push({ day_of_week: row.day_of_week, workout_id: row.workout_id });
   }
 
   const clients = (clientRows || []).map((row) => {
     const weeklyPlan = planByClient[row.id] || {};
     const client = dbClientToClient(row, workouts, weeklyPlan);
-    client.progress = calculateProgress(Object.keys(weeklyPlan), completedByClient[row.id] || []);
+    client.progress = calculateProgress(weeklyPlan, completedByClient[row.id] || []);
     return client;
   });
   return { clients, workouts };
@@ -205,14 +208,14 @@ export const fetchClientData = async (userId: string) => {
   const { start, end } = getCurrentWeekRange();
   const { data: completionRows } = await supabase
     .from("workout_completions")
-    .select("day_of_week")
+    .select("day_of_week, workout_id")
     .eq("client_id", clientRow.id)
     .eq("user_id", userId)
     .gte("completed_date", start)
     .lte("completed_date", end);
 
   const client = dbClientToClient(clientRow, workouts, weeklyPlan);
-  client.progress = calculateProgress(Object.keys(weeklyPlan), (completionRows || []).map((row: any) => row.day_of_week));
+  client.progress = calculateProgress(weeklyPlan, (completionRows || []) as { day_of_week: string; workout_id: string }[]);
 
   return { client, workouts };
 };
@@ -307,9 +310,11 @@ export type CompletionHistoryItem = {
   id: string;
   dayOfWeek: string;
   completedDate: string;
+  workoutId: string;
   workoutTitle: string;
   dayWorkoutTitle: string;
   exerciseCount: number;
+  exercises: string[];
 };
 
 export const fetchClientCompletionHistory = async (clientId: string, userId: string): Promise<CompletionHistoryItem[]> => {
@@ -337,9 +342,11 @@ export const fetchClientCompletionHistory = async (clientId: string, userId: str
       id: row.id,
       dayOfWeek: row.day_of_week,
       completedDate: row.completed_date,
+      workoutId: row.workout_id,
       workoutTitle: workout?.title || "План",
       dayWorkoutTitle: dayWorkout?.title || "Тренировка",
       exerciseCount: dayWorkout?.exercises.length || 0,
+      exercises: dayWorkout?.exercises || [],
     };
   });
 };

@@ -10,6 +10,7 @@ export const createClientAccount = async (payload: {
   password: string;
   name: string;
   telegram: string;
+  userId?: string;
 }): Promise<CreatedClientAccount> => {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;

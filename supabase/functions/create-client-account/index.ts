@@ -40,12 +40,41 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Создавать клиентов может только тренер" }, { status: 403, headers: corsHeaders });
     }
 
-    const { email, password, name, telegram } = await req.json();
-    if (!email || !password || password.length < 8) {
-      return Response.json({ error: "Укажите email и пароль минимум 8 символов" }, { status: 400, headers: corsHeaders });
+    const { userId, email, password, name, telegram } = await req.json();
+    if (!password || password.length < 8) {
+      return Response.json({ error: "Укажите пароль минимум 8 символов" }, { status: 400, headers: corsHeaders });
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    if (userId) {
+      const { data: updated, error: updateError } = await adminClient.auth.admin.updateUserById(userId, {
+        password,
+        user_metadata: { name, telegram, role: "client" },
+      });
+
+      if (updateError || !updated.user) {
+        return Response.json({ error: updateError?.message || "Не удалось обновить пароль" }, { status: 400, headers: corsHeaders });
+      }
+
+      const { error: profileError } = await adminClient.from("profiles").upsert({
+        id: userId,
+        role: "client",
+        name: name || email || updated.user.email,
+        telegram: telegram || "",
+      });
+
+      if (profileError) {
+        return Response.json({ error: profileError.message }, { status: 400, headers: corsHeaders });
+      }
+
+      return Response.json({ userId, email: updated.user.email || email }, { headers: corsHeaders });
+    }
+
+    if (!email) {
+      return Response.json({ error: "Укажите email клиента" }, { status: 400, headers: corsHeaders });
+    }
+
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,

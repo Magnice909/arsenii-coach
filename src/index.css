@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #070a10;
+    --bg-2: #10151f;
+    --surface: #141b27;
+    --surface-2: #1c2534;
+    --line: rgba(255,255,255,0.09);
+    --line-2: rgba(255,255,255,0.16);
+    --ink: #f6f8fb;
+    --ink-2: rgba(246,248,251,0.74);
+    --ink-3: rgba(246,248,251,0.48);
+    --ink-4: rgba(246,248,251,0.28);
+    --accent: #68e1fd;
+    --accent-glow: rgba(104,225,253,0.30);
+    --secondary-accent: #8b5cf6;
+    --background: 220 39% 5%;
+    --foreground: 220 28% 97%;
+    --card: 220 25% 10%;
+    --card-foreground: 220 28% 97%;
+    --popover: 220 25% 10%;
+    --popover-foreground: 220 28% 97%;
+    --primary: 192 96% 70%;
+    --primary-foreground: 220 39% 5%;
+    --secondary: 220 25% 13%;
+    --secondary-foreground: 220 28% 97%;
+    --muted: 220 20% 15%;
+    --muted-foreground: 220 10% 62%;
+    --accent-hsl: 192 96% 70%;
+    --accent-foreground: 220 39% 5%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 20% 18%;
+    --input: 220 20% 18%;
+    --ring: 192 96% 70%;
+    --radius: 0.875rem;
+    --font-heading: 'Inter', -apple-system, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { @apply border-border; }
+  html, body { background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }
+}
+
+.grid-overlay {
+  background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 80px 80px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 100%);
+}
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-3); }
+.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: conic-gradient(from 220deg, var(--accent), var(--secondary-accent), var(--accent)); position: relative; box-shadow: 0 0 24px rgba(104,225,253,0.30); flex-shrink: 0; }
+.logo-mark::after { content: ""; position: absolute; inset: 7px; border-radius: 3px; background: var(--bg); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(104,225,253,.55); } 70% { box-shadow: 0 0 0 14px rgba(104,225,253,0); } 100% { box-shadow: 0 0 0 0 rgba(104,225,253,0); } }
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(104,225,253,.6); animation: pulse 2s infinite; }
+.glass { background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035)); border: 1px solid var(--line); box-shadow: 0 24px 90px rgba(0,0,0,.35); }
+.app-card { background: rgba(255,255,255,.06); border: 1px solid var(--line); }

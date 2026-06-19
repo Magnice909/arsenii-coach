@@ -94,8 +94,8 @@ const Index = () => {
               <div className="relative overflow-hidden rounded-[2rem] glass p-6 min-h-[500px]">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
                 <div className="relative h-full flex flex-col justify-end">
-                  <div className="h-72 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center p-8">
-                    {settings.photoDataUrl ? <img src={settings.photoDataUrl} alt="Фото Арсения" className="h-full w-full object-cover rounded-[1.5rem]" /> : <div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div>}
+                  <div className="h-72 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center p-4">
+                    {settings.photoDataUrl ? <img src={settings.photoDataUrl} alt="Фото Арсения" className="h-full w-full object-contain rounded-[1.5rem]" /> : <div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div>}
                   </div>
                 </div>
               </div>

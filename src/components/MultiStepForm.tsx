@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 const TOTAL_STEPS = 8;
 const goalOptions = ["Сжечь жир", "Набрать мышечную массу", "Стать сильнее", "Наладить режим и привычки"];
@@ -25,17 +26,35 @@ const MultiStepForm = () => {
   const [answers, setAnswers] = useState<Answers>(initialAnswers);
   const [submitted, setSubmitted] = useState(false);
   const [telegramError, setTelegramError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const next = () => { setDirection(1); setStep((s) => Math.min(s + 1, TOTAL_STEPS)); };
   const prev = () => { setDirection(-1); setStep((s) => Math.max(s - 1, 1)); };
   const handleSelect = (field: keyof Answers, value: string) => { setAnswers((prev) => ({ ...prev, [field]: value })); setTimeout(next, 250); };
   const handleTelegramChange = (raw: string) => { const formatted = formatTelegram(raw); setAnswers((p) => ({ ...p, telegram: formatted })); if (telegramError && isValidTelegram(formatted)) setTelegramError(""); };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError("");
     if (!isValidTelegram(answers.telegram)) { setTelegramError("Введите Telegram, например @username"); return; }
-    const saved = JSON.parse(localStorage.getItem("arseniiCoachApplications") || "[]");
-    localStorage.setItem("arseniiCoachApplications", JSON.stringify([{ ...answers, createdAt: new Date().toISOString() }, ...saved]));
+
+    const application = { ...answers, created_at: new Date().toISOString(), status: "Новая" };
+    setIsSubmitting(true);
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from("applications").insert(application);
+      setIsSubmitting(false);
+      if (error) {
+        setSubmitError("Не удалось отправить заявку. Попробуйте ещё раз или напишите в Telegram @president_h.");
+        return;
+      }
+    } else {
+      const saved = JSON.parse(localStorage.getItem("arseniiCoachApplications") || "[]");
+      localStorage.setItem("arseniiCoachApplications", JSON.stringify([application, ...saved]));
+      setIsSubmitting(false);
+    }
+
     setSubmitted(true);
   };
 
@@ -75,7 +94,8 @@ const MultiStepForm = () => {
                 {telegramError && <p className="text-xs text-red-300">{telegramError}</p>}
                 <input required type="email" value={answers.email} onChange={(e) => setAnswers((p) => ({ ...p, email: e.target.value }))} placeholder="Email" className={inputClass} style={inputStyle} />
                 <input value={answers.instagram} onChange={(e) => setAnswers((p) => ({ ...p, instagram: e.target.value }))} placeholder="Instagram / Telegram (необязательно)" className={inputClass} style={inputStyle} />
-                <button type="submit" className="w-full rounded-xl py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Отправить заявку</button>
+                {submitError && <p className="text-xs text-red-300">{submitError}</p>}
+                <button disabled={isSubmitting} type="submit" className="w-full rounded-xl py-3 font-semibold disabled:opacity-60" style={{ background: "var(--accent)", color: "var(--bg)" }}>{isSubmitting ? "Отправляем..." : "Отправить заявку"}</button>
               </div>
             </StepWrapper>
           )}

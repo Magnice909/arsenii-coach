@@ -10,6 +10,7 @@ export type User = {
 
 export type Client = {
   id: string;
+  userId?: string;
   name: string;
   telegram: string;
   email: string;

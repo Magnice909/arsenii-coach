@@ -26,6 +26,15 @@ export type Client = {
   weeklyPlan: Record<string, string>;
 };
 
+export type DayWorkout = {
+  title: string;
+  focus: string;
+  notes: string;
+  exercises: string[];
+};
+
+export type WeeklyTemplate = Record<string, DayWorkout>;
+
 export type Workout = {
   id: string;
   title: string;
@@ -33,6 +42,7 @@ export type Workout = {
   focus: string;
   notes: string;
   exercises: string[];
+  weeklyTemplate?: WeeklyTemplate;
 };
 
 export type Message = {

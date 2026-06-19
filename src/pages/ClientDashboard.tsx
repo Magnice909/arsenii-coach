@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { sendCoachPush } from "../lib/push";
-import { createNotification, fetchClientData } from "../lib/db";
+import { createNotification, fetchClientData, getCompletionForToday, getDayWorkout, markWorkoutCompleted, weekDays } from "../lib/db";
 import { Client, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 
@@ -11,9 +11,17 @@ const ClientDashboard = () => {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [completedToday, setCompletedToday] = useState(false);
 
+  const todayName = weekDays[(new Date().getDay() + 6) % 7];
   const weeklyIds = Object.values(client?.weeklyPlan || {});
-  const workout = useMemo(() => workouts.find((w) => w.id === weeklyIds[0]) || workouts.find((w) => w.id === client?.assignedWorkoutId) || workouts[0], [workouts, weeklyIds, client?.assignedWorkoutId]);
+  const workout = useMemo(() => workouts.find((w) => w.id === client?.weeklyPlan?.[todayName]) || workouts.find((w) => w.id === weeklyIds[0]) || workouts.find((w) => w.id === client?.assignedWorkoutId) || workouts[0], [workouts, weeklyIds, client?.assignedWorkoutId, client?.weeklyPlan, todayName]);
+  const todayWorkout = getDayWorkout(workout, todayName);
+
+  useEffect(() => {
+    if (!client?.id || !workout?.id) return;
+    getCompletionForToday(client.id, workout.id, todayName).then(setCompletedToday).catch(() => setCompletedToday(false));
+  }, [client?.id, workout?.id, todayName]);
 
   useEffect(() => {
     const load = async () => {
@@ -56,12 +64,15 @@ const ClientDashboard = () => {
   }
 
   const markDone = async () => {
+    if (completedToday) return;
     try {
-      if (client.coachId) await createNotification(client.coachId, "Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${workout.title}`, "/#/coach");
-      sendCoachPush("Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${workout.title}`);
+      await markWorkoutCompleted(client.id, workout.id, todayName);
+      setCompletedToday(true);
+      if (client.coachId) await createNotification(client.coachId, "Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${todayWorkout?.title || workout.title}`, "/#/coach");
+      sendCoachPush("Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${todayWorkout?.title || workout.title}`);
       alert("Тренировка отмечена. Арсений увидит уведомление в кабинете тренера.");
     } catch {
-      alert("Тренировка отмечена, но уведомление не удалось отправить.");
+      alert("Не удалось отметить тренировку. Попробуйте ещё раз.");
     }
   };
 
@@ -77,10 +88,10 @@ const ClientDashboard = () => {
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div><div className="eyebrow">Кабинет клиента</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || client.name}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || client.telegram}</p></div>
-          <button onClick={markDone} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Отметить тренировку</button>
+          <button disabled={completedToday} onClick={markDone} className="rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : "Отметить тренировку"}</button>
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${workout.title}`} subtitle={workout.day}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{workout.notes}</p><div className="space-y-3">{workout.exercises.map(e => <label key={e} className="app-card rounded-2xl p-4 flex gap-3 items-center"><input type="checkbox" className="w-5 h-5" /><span>{e}</span></label>)}</div><textarea placeholder="Комментарий Арсению после тренировки" className="mt-5 w-full rounded-2xl px-4 py-3" rows={4} style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></Panel>}
+        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || workout.title}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map(e => <label key={e} className="app-card rounded-2xl p-4 flex gap-3 items-center"><input type="checkbox" className="w-5 h-5" /><span>{e}</span></label>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня отдых или упражнения не указаны.</div>}</Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={client.nextWorkout || "Не назначено"} /></div></Panel>}
         {tab === "progress" && <Panel title="Мой прогресс" subtitle="обновляется тренером"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
@@ -91,8 +102,7 @@ const ClientDashboard = () => {
 };
 
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, string>; workouts: { id: string; title: string; focus: string; exercises: string[] }[] }) => <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{weekDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); return <div key={day} className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{workout ? workout.title : "Отдых"}</b>{workout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{workout.focus || `${workout.exercises.length} упражнений`}</p>}</div>; })}</div>;
+const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, string>; workouts: Workout[] }) => <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{weekDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); const dayWorkout = getDayWorkout(workout, day); return <div key={day} className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{dayWorkout?.title || "Отдых"}</b>{dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{dayWorkout.focus || (dayWorkout.exercises.length ? `${dayWorkout.exercises.length} упражнений` : "Отдых")}</p>}</div>; })}</div>;
 const Metric = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-2xl mt-2 block">{value}</b></div>;
 const Info = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-xl mt-2 block">{value}</b></div>;
 

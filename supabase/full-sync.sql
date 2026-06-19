@@ -71,3 +71,44 @@ with check (
     and profiles.role = 'coach'
   )
 );
+
+create table if not exists public.workout_completions (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  workout_id uuid not null references public.workouts(id) on delete cascade,
+  day_of_week text not null,
+  completed_date date not null default current_date,
+  created_at timestamp with time zone default now(),
+  unique (user_id, workout_id, day_of_week, completed_date)
+);
+
+alter table public.workout_completions enable row level security;
+grant select, insert, update, delete on public.workout_completions to authenticated, service_role;
+
+drop policy if exists "client can read own completions" on public.workout_completions;
+create policy "client can read own completions"
+on public.workout_completions
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "client can create own completions" on public.workout_completions;
+create policy "client can create own completions"
+on public.workout_completions
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "coach can read client completions" on public.workout_completions;
+create policy "coach can read client completions"
+on public.workout_completions
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.clients
+    where clients.id = workout_completions.client_id
+    and clients.coach_id = auth.uid()
+  )
+);

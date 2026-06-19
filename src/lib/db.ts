@@ -1,4 +1,4 @@
-import { Client, makeId, Message, SiteSettings, Workout } from "./storage";
+import { Client, DayWorkout, makeId, Message, SiteSettings, WeeklyTemplate, Workout } from "./storage";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record<string, string> = {}): Client => {
@@ -23,14 +23,39 @@ const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record
   };
 };
 
-const dbWorkoutToWorkout = (row: any): Workout => ({
-  id: row.id,
-  title: row.title || "Тренировка",
-  day: row.day || "Понедельник",
-  focus: row.focus || "",
-  notes: row.notes || "",
-  exercises: Array.isArray(row.exercises) ? row.exercises : [],
-});
+export const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+
+export const createEmptyWeeklyTemplate = (): WeeklyTemplate => Object.fromEntries(
+  weekDays.map((day) => [day, { title: day === "Понедельник" ? "Тренировка" : "Отдых", focus: "", notes: "", exercises: [] as string[] }])
+) as WeeklyTemplate;
+
+export const getDayWorkout = (workout: Workout | undefined, day: string): DayWorkout | null => {
+  if (!workout) return null;
+  if (workout.weeklyTemplate?.[day]) return workout.weeklyTemplate[day];
+  if (workout.day === day) return { title: workout.title, focus: workout.focus, notes: workout.notes, exercises: workout.exercises };
+  return { title: "Отдых", focus: "", notes: "", exercises: [] };
+};
+
+const parseWeeklyTemplate = (value: unknown): WeeklyTemplate | undefined => {
+  if (!value || Array.isArray(value) || typeof value !== "object") return undefined;
+  const candidate = value as { type?: string; days?: WeeklyTemplate };
+  return candidate.days || undefined;
+};
+
+const serializeWorkoutExercises = (workout: Workout) => workout.weeklyTemplate ? { type: "weekly_template", days: workout.weeklyTemplate } : workout.exercises;
+
+const dbWorkoutToWorkout = (row: any): Workout => {
+  const weeklyTemplate = parseWeeklyTemplate(row.exercises);
+  return {
+    id: row.id,
+    title: row.title || "Тренировка",
+    day: row.day || "Понедельник",
+    focus: row.focus || "",
+    notes: row.notes || "",
+    exercises: Array.isArray(row.exercises) ? row.exercises : [],
+    weeklyTemplate,
+  };
+};
 
 export const fetchCoachData = async (coachId: string) => {
   if (!isSupabaseConfigured) return { clients: [] as Client[], workouts: [] as Workout[] };
@@ -90,7 +115,7 @@ export const deleteClientRecord = async (coachId: string, clientId: string) => {
 export const createWorkoutRecord = async (coachId: string): Promise<Workout> => {
   const { data, error } = await supabase
     .from("workouts")
-    .insert({ coach_id: coachId, title: "Новая тренировка", day: "Понедельник", focus: "", notes: "", exercises: ["Новое упражнение — 3×10"] })
+    .insert({ coach_id: coachId, title: "Новый недельный план", day: "Понедельник", focus: "", notes: "", exercises: { type: "weekly_template", days: createEmptyWeeklyTemplate() } })
     .select("*")
     .single();
   if (error) throw error;
@@ -103,7 +128,7 @@ export const updateWorkoutRecord = async (coachId: string, workout: Workout) => 
     day: workout.day,
     focus: workout.focus,
     notes: workout.notes,
-    exercises: workout.exercises,
+    exercises: serializeWorkoutExercises(workout),
   }).eq("id", workout.id).eq("coach_id", coachId);
   if (error) throw error;
 };
@@ -194,4 +219,40 @@ export const createNotification = async (recipientId: string, title: string, bod
   const senderId = sessionData.session?.user.id;
   const { error } = await supabase.from("notifications").insert({ recipient_id: recipientId, sender_id: senderId, title, body, url });
   if (error) throw error;
+};
+
+
+export const getCompletionForToday = async (clientId: string, workoutId: string, dayOfWeek: string): Promise<boolean> => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) return false;
+  const { data, error } = await supabase
+    .from("workout_completions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("client_id", clientId)
+    .eq("workout_id", workoutId)
+    .eq("day_of_week", dayOfWeek)
+    .eq("completed_date", today)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.id);
+};
+
+export const markWorkoutCompleted = async (clientId: string, workoutId: string, dayOfWeek: string) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error("Сессия клиента не найдена");
+
+  const { error } = await supabase.from("workout_completions").insert({
+    client_id: clientId,
+    user_id: userId,
+    workout_id: workoutId,
+    day_of_week: dayOfWeek,
+    completed_date: today,
+  });
+
+  if (error && !error.message.toLowerCase().includes("duplicate")) throw error;
 };

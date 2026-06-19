@@ -3,7 +3,7 @@ import { enablePushNotifications } from "../lib/push";
 import { createClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { createClientRecord, createWorkoutRecord, deleteClientRecord, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord } from "../lib/db";
+import { createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord } from "../lib/db";
 
 type Application = {
   id: string;
@@ -29,7 +29,7 @@ const emptyClient = (workoutId: string): Client => ({
   id: makeId(), name: "Новый клиент", telegram: "@username", email: "", goal: "", plan: "", status: "Новый", progress: 0, nextWorkout: "", comment: "", nutrition: "", assignedWorkoutId: workoutId, weeklyPlan: { "Понедельник": workoutId },
 });
 
-const emptyWorkout = (): Workout => ({ id: makeId(), title: "Новая тренировка", day: "Понедельник", focus: "", notes: "", exercises: ["Новое упражнение — 3×10"] });
+const emptyWorkout = (): Workout => ({ id: makeId(), title: "Новый недельный план", day: "Понедельник", focus: "", notes: "", exercises: [], weeklyTemplate: createEmptyWeeklyTemplate() });
 
 const CoachDashboard = () => {
   const user = getUser();
@@ -361,14 +361,14 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
         {accountStatus && <p className="text-sm mt-3" style={{ color: accountStatus.includes("создан") ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
       </div>
 
-      <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-        Основной план
-        <select value={client.assignedWorkoutId} onChange={(e) => { const workout = workouts.find(w => w.id === e.target.value); onChange({ assignedWorkoutId: e.target.value, plan: workout?.title || client.plan }); }} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+      <div className="app-card rounded-3xl p-4">
+        <h3 className="text-xl font-bold">Назначенный недельный план</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери один план. Дни недели и тренировки уже находятся внутри самого плана.</p>
+        <select value={client.assignedWorkoutId} onChange={(e) => { const workout = workouts.find(w => w.id === e.target.value); const weeklyPlan = Object.fromEntries(weekDays.map((day) => [day, e.target.value])); onChange({ assignedWorkoutId: e.target.value, weeklyPlan, plan: workout?.title || client.plan }); }} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
           <option value="">План не выбран</option>
           {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
         </select>
-      </label>
-      <WeeklyPlanEditor client={client} workouts={workouts} onChange={onChange} />
+      </div>
       <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
       <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
@@ -408,7 +408,72 @@ const WeeklyPlanEditor = ({ client, workouts, onChange }: { client: Client; work
   );
 };
 
-const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onChange: (patch: Partial<Workout>) => void; onDelete: () => void }) => <div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Field label="Название плана" value={workout.title} onChange={(title) => onChange({ title })} /><Field label="День" value={workout.day} onChange={(day) => onChange({ day })} /><Field label="Фокус" value={workout.focus} onChange={(focus) => onChange({ focus })} /></div><TextArea label="Упражнения — каждое с новой строки" rows={8} value={workout.exercises.join("\n")} onChange={(value) => onChange({ exercises: value.split("\n").filter(Boolean) })} /><TextArea label="Заметки к тренировке" value={workout.notes} onChange={(notes) => onChange({ notes })} /><button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить план</button></div>;
+const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onChange: (patch: Partial<Workout>) => void; onDelete: () => void }) => {
+  const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
+  const [status, setStatus] = useState("");
+
+  useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
+
+  const updateDay = (day: string, patch: Partial<{ title: string; focus: string; notes: string; exercises: string[] }>) => {
+    const currentTemplate = draft.weeklyTemplate || createEmptyWeeklyTemplate();
+    setDraft({
+      ...draft,
+      weeklyTemplate: {
+        ...currentTemplate,
+        [day]: { ...currentTemplate[day], ...patch },
+      },
+    });
+    setStatus("");
+  };
+
+  const save = () => {
+    onChange(draft);
+    setStatus("План сохранён. Теперь его можно назначать клиенту.");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Название недельного плана" value={draft.title} onChange={(title) => { setDraft({ ...draft, title }); setStatus(""); }} />
+        <Field label="Краткий фокус плана" value={draft.focus} onChange={(focus) => { setDraft({ ...draft, focus }); setStatus(""); }} />
+      </div>
+      <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
+
+      <div className="app-card rounded-3xl p-4">
+        <h3 className="text-xl font-bold">Дни недели внутри плана</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Заполни тренировки по дням. Если день отдыха — оставь упражнения пустыми или напиши «Отдых».</p>
+        <div className="space-y-5">
+          {weekDays.map((day) => {
+            const dayWorkout = draft.weeklyTemplate?.[day] || { title: "Отдых", focus: "", notes: "", exercises: [] };
+            return (
+              <div key={day} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
+                <h4 className="font-bold mb-3">{day}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Field label="Название тренировки" value={dayWorkout.title} onChange={(title) => updateDay(day, { title })} />
+                  <Field label="Фокус" value={dayWorkout.focus} onChange={(focus) => updateDay(day, { focus })} />
+                </div>
+                <TextArea label="Упражнения — каждое с новой строки" rows={5} value={(dayWorkout.exercises || []).join("\n")} onChange={(value) => updateDay(day, { exercises: value.split("\n").filter(Boolean) })} />
+                <TextArea label="Заметки к этому дню" value={dayWorkout.notes} onChange={(notes) => updateDay(day, { notes })} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="sticky bottom-4 z-20 glass rounded-3xl p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div>
+          <h3 className="font-bold">Сохранение плана</h3>
+          <p className="text-sm" style={{ color: "var(--ink-3)" }}>Изменения применятся только после нажатия кнопки.</p>
+          {status && <p className="text-sm mt-1" style={{ color: "var(--accent)" }}>{status}</p>}
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={save} className="rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить план</button>
+          <button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить план</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: (settings: SiteSettings) => void }) => {
@@ -466,9 +531,9 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
       <div className="space-y-4">
         <div className="app-card rounded-3xl p-4">
           <h3 className="text-xl font-bold">Фото на главной</h3>
-          <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать вертикальное фото 4:5 или 3:4. Фото больше не растягивается и не обрезается грубо.</p>
-          <div className="mt-4 aspect-[4/5] rounded-3xl overflow-hidden grid place-items-center p-3" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
-            {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-contain rounded-2xl" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
+          <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать вертикальное фото 4:5 или 3:4. Фото будет обрезано по рамке, чтобы на сайте не было белых полей. Лучше загружать уже обрезанный портрет.</p>
+          <div className="mt-4 aspect-[4/5] rounded-3xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
+            {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center rounded-2xl" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
           </div>
           <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="mt-4 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
           <button onClick={() => update({ photoDataUrl: "" })} className="mt-3 rounded-full px-5 py-3 app-card">Убрать фото</button>

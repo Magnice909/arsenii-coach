@@ -364,7 +364,7 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
       <div className="app-card rounded-3xl p-4">
         <h3 className="text-xl font-bold">Назначенный недельный план</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери один план. Дни недели и тренировки уже находятся внутри самого плана.</p>
-        <select value={client.assignedWorkoutId} onChange={(e) => { const workout = workouts.find(w => w.id === e.target.value); const weeklyPlan = Object.fromEntries(weekDays.map((day) => [day, e.target.value])); onChange({ assignedWorkoutId: e.target.value, weeklyPlan, plan: workout?.title || client.plan }); }} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+        <select value={client.assignedWorkoutId} onChange={(e) => { const workout = workouts.find(w => w.id === e.target.value); const weeklyPlan = workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, e.target.value])) : {}; onChange({ assignedWorkoutId: e.target.value, weeklyPlan, plan: workout?.title || client.plan }); }} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
           <option value="">План не выбран</option>
           {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
         </select>
@@ -408,11 +408,38 @@ const WeeklyPlanEditor = ({ client, workouts, onChange }: { client: Client; work
   );
 };
 
+const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: (exercises: string[]) => void }) => {
+  const updateExercise = (index: number, value: string) => onChange(exercises.map((exercise, i) => i === index ? value : exercise));
+  const addExercise = () => onChange([...exercises, ""]);
+  const removeExercise = (index: number) => onChange(exercises.filter((_, i) => i !== index));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mt-4 mb-2">
+        <label className="text-sm" style={{ color: "var(--ink-3)" }}>Упражнения</label>
+        <button type="button" onClick={addExercise} className="rounded-full px-4 py-2 text-sm glass">Добавить упражнение</button>
+      </div>
+      <div className="space-y-2">
+        {exercises.length === 0 && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Упражнений пока нет. Нажмите «Добавить упражнение».</p>}
+        {exercises.map((exercise, index) => (
+          <div key={index} className="grid grid-cols-[1fr_auto] gap-2">
+            <input value={exercise} onChange={(event) => updateExercise(index, event.target.value)} placeholder="Например: Жим лёжа — 4×8" className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+            <button type="button" onClick={() => removeExercise(index)} className="rounded-xl px-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onChange: (patch: Partial<Workout>) => void; onDelete: () => void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
 
   useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
+
+  const usedDays = Object.keys(draft.weeklyTemplate || {});
+  const availableDays = weekDays.filter((day) => !usedDays.includes(day));
 
   const updateDay = (day: string, patch: Partial<{ title: string; focus: string; notes: string; exercises: string[] }>) => {
     const currentTemplate = draft.weeklyTemplate || createEmptyWeeklyTemplate();
@@ -423,6 +450,36 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
         [day]: { ...currentTemplate[day], ...patch },
       },
     });
+    setStatus("");
+  };
+
+  const addTrainingDay = () => {
+    const day = availableDays[0];
+    if (!day) return;
+    setDraft({
+      ...draft,
+      weeklyTemplate: {
+        ...(draft.weeklyTemplate || {}),
+        [day]: { title: "Новая тренировка", focus: "", notes: "", exercises: [] },
+      },
+    });
+    setStatus("");
+  };
+
+  const removeTrainingDay = (day: string) => {
+    const next = { ...(draft.weeklyTemplate || {}) };
+    delete next[day];
+    setDraft({ ...draft, weeklyTemplate: next });
+    setStatus("");
+  };
+
+  const renameTrainingDay = (oldDay: string, newDay: string) => {
+    if (oldDay === newDay || (draft.weeklyTemplate || {})[newDay]) return;
+    const currentTemplate = draft.weeklyTemplate || {};
+    const next = { ...currentTemplate };
+    next[newDay] = currentTemplate[oldDay];
+    delete next[oldDay];
+    setDraft({ ...draft, weeklyTemplate: next });
     setStatus("");
   };
 
@@ -440,19 +497,30 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
       <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
 
       <div className="app-card rounded-3xl p-4">
-        <h3 className="text-xl font-bold">Дни недели внутри плана</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Заполни тренировки по дням. Если день отдыха — оставь упражнения пустыми или напиши «Отдых».</p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-xl font-bold">Тренировочные дни</h3>
+            <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>Добавляй только те дни, когда у клиента есть тренировка. Дни отдыха не создаются.</p>
+          </div>
+          <button disabled={!availableDays.length} type="button" onClick={addTrainingDay} className="rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить день</button>
+        </div>
+        {!usedDays.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>В плане пока нет тренировочных дней. Нажми «Добавить день».</p>}
         <div className="space-y-5">
-          {weekDays.map((day) => {
-            const dayWorkout = draft.weeklyTemplate?.[day] || { title: "Отдых", focus: "", notes: "", exercises: [] };
+          {usedDays.sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b)).map((day) => {
+            const dayWorkout = draft.weeklyTemplate?.[day] || { title: "Новая тренировка", focus: "", notes: "", exercises: [] };
             return (
               <div key={day} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
-                <h4 className="font-bold mb-3">{day}</h4>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                  <select value={day} onChange={(event) => renameTrainingDay(day, event.target.value)} className="rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+                    {[day, ...availableDays].sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b)).map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeTrainingDay(day)} className="rounded-full px-4 py-2" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить день</button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="Название тренировки" value={dayWorkout.title} onChange={(title) => updateDay(day, { title })} />
                   <Field label="Фокус" value={dayWorkout.focus} onChange={(focus) => updateDay(day, { focus })} />
                 </div>
-                <TextArea label="Упражнения — каждое с новой строки" rows={5} value={(dayWorkout.exercises || []).join("\n")} onChange={(value) => updateDay(day, { exercises: value.split("\n").filter(Boolean) })} />
+                <ExerciseList exercises={dayWorkout.exercises || []} onChange={(exercises) => updateDay(day, { exercises })} />
                 <TextArea label="Заметки к этому дню" value={dayWorkout.notes} onChange={(notes) => updateDay(day, { notes })} />
               </div>
             );
@@ -474,7 +542,6 @@ const WorkoutEditor = ({ workout, onChange, onDelete }: { workout: Workout; onCh
     </div>
   );
 };
-
 
 const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: (settings: SiteSettings) => void }) => {
   const [draft, setDraft] = useState<SiteSettings>(settings);

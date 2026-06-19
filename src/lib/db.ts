@@ -25,9 +25,7 @@ const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record
 
 export const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
-export const createEmptyWeeklyTemplate = (): WeeklyTemplate => Object.fromEntries(
-  weekDays.map((day) => [day, { title: day === "Понедельник" ? "Тренировка" : "Отдых", focus: "", notes: "", exercises: [] as string[] }])
-) as WeeklyTemplate;
+export const createEmptyWeeklyTemplate = (): WeeklyTemplate => ({});
 
 export const getDayWorkout = (workout: Workout | undefined, day: string): DayWorkout | null => {
   if (!workout) return null;

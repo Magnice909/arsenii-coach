@@ -34,6 +34,7 @@ const emptyWorkout = (): Workout => ({ id: makeId(), title: "Новый неде
 const CoachDashboard = () => {
   const user = getUser();
   const [tab, setTab] = useState("overview");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clients, updateClients] = useState<Client[]>(getClients().map((client) => ({ ...client, weeklyPlan: client.weeklyPlan || { "Понедельник": client.assignedWorkoutId } })));
   const [workouts, updateWorkouts] = useState<Workout[]>(getWorkouts());
   const [messages, updateMessages] = useState<Message[]>(getMessages());
@@ -260,13 +261,26 @@ const CoachDashboard = () => {
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-[270px_1fr]" style={{ background: "var(--bg)" }}>
-      <aside className="border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
+      <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden fixed top-4 left-4 z-50 rounded-full px-4 py-3 glass font-semibold">Меню</button>
+      {mobileMenuOpen && <div className="fixed inset-0 z-[80] lg:hidden">
+        <button className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} aria-label="Закрыть меню" />
+        <aside className="absolute left-0 top-0 h-full w-[82vw] max-w-[340px] p-5 overflow-y-auto" style={{ background: "#080c12", borderRight: "1px solid var(--line)" }}>
+          <div className="flex items-center justify-between mb-8">
+            <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
+            <button onClick={() => setMobileMenuOpen(false)} className="rounded-full px-4 py-2 glass">×</button>
+          </div>
+          {[ ["overview", "Обзор"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
+          <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
+        </aside>
+      </div>}
+
+      <aside className="hidden lg:block border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
         {[ ["overview", "Обзор"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
         <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
       </aside>
 
-      <section className="p-4 md:p-8 relative overflow-hidden">
+      <section className="p-4 pt-20 md:p-8 relative overflow-hidden">
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div><div className="eyebrow">Кабинет тренера</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || "Арсений"}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || "@president_h"}</p></div>
@@ -485,7 +499,7 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[]) => void }) => {
+const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[]) => Promise<void> | void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
   const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
@@ -544,6 +558,17 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
     setStatus("План сохранён. Теперь его можно назначать клиенту.");
   };
 
+  const handleBulkAssign = async () => {
+    if (!bulkClientIds.length) {
+      alert("Выбери хотя бы одного клиента");
+      return;
+    }
+    onChange(draft);
+    await onBulkAssign(draft, bulkClientIds);
+    setBulkClientIds([]);
+    setStatus("План назначен выбранным клиентам.");
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -596,7 +621,7 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
             </label>
           ))}
         </div>
-        <button type="button" disabled={!bulkClientIds.length} onClick={() => onBulkAssign(draft, bulkClientIds)} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Назначить выбранным</button>
+        <button type="button" disabled={!bulkClientIds.length} onClick={handleBulkAssign} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Назначить выбранным</button>
       </div>
 
       <div className="sticky bottom-4 z-20 glass rounded-3xl p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">

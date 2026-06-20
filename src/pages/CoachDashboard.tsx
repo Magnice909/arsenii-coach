@@ -428,6 +428,9 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
     setAssignedPlanDraft(client.assignedWorkoutId || "");
     setNextPlanDraft(client.nextPlanId || "");
     setNextPlanDateDraft(client.nextPlanWeekStart || "");
+  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart]);
+
+  useEffect(() => {
     if (!client.userId) {
       const password = buildPassword();
       setClientPassword(password);
@@ -438,7 +441,7 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
       setShowClientPassword(false);
       setAccountStatus("Клиентский аккаунт уже привязан. При необходимости сгенерируй новый пароль и нажми «Обновить пароль».");
     }
-  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart, client.userId]);
+  }, [client.id]);
 
   const nextMonday = () => {
     const date = new Date();
@@ -487,7 +490,8 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
         userId: client.userId,
       });
       onChange({ userId: created.userId });
-      setAccountStatus(client.userId ? "Пароль клиента обновлён. Скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Скопируй пароль и отправь клиенту.");
+      setShowClientPassword(true);
+      setAccountStatus(client.userId ? "Пароль клиента обновлён. Скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Пароль оставлен на экране — скопируй его и отправь клиенту.");
     } catch (error) {
       setAccountStatus(error instanceof Error ? error.message : "Не удалось создать аккаунт клиента");
     } finally {

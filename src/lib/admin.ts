@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabaseAnonKey, supabaseUrl } from "./supabase";
 
 export type CreatedClientAccount = {
   userId: string;
@@ -18,16 +18,33 @@ export const createClientAccount = async (payload: {
   if (!token) {
     throw new Error("Сессия Supabase не найдена. Выйдите из кабинета и войдите заново.");
   }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase не настроен в переменных Vercel");
+  }
 
-  const { data, error } = await supabase.functions.invoke("create-client-account", {
-    body: payload,
+  const response = await fetch(`${supabaseUrl}/functions/v1/create-client-account`, {
+    method: "POST",
     headers: {
+      "Content-Type": "application/json",
+      apikey: supabaseAnonKey,
       Authorization: `Bearer ${token}`,
     },
+    body: JSON.stringify(payload),
   });
 
-  if (error) throw new Error(error.message || "Не удалось создать аккаунт клиента");
-  if (!data?.userId) throw new Error(data?.error || "Не удалось создать аккаунт клиента");
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error || `Edge Function вернула ошибку ${response.status}`);
+  }
+  if (!data?.userId) {
+    throw new Error(data?.error || "Edge Function не вернула userId клиента");
+  }
 
   return data as CreatedClientAccount;
 };

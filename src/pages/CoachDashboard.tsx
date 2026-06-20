@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { enablePushNotifications } from "../lib/push";
-import { createClientAccount } from "../lib/admin";
+import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
 import { createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient } from "../lib/db";
@@ -137,7 +137,10 @@ const CoachDashboard = () => {
     if (!selectedClient || !confirm(`Удалить клиента ${selectedClient.name}?`)) return;
     const removedClient = selectedClient;
     try {
-      if (isSupabaseConfigured && user?.id) await deleteClientRecord(user.id, removedClient.id);
+      if (isSupabaseConfigured && user?.id) {
+        if (removedClient.userId) await deleteClientAccount(removedClient.userId);
+        await deleteClientRecord(user.id, removedClient.id);
+      }
       const next = clients.filter((client) => client.id !== removedClient.id);
       saveClients(next);
       setSelectedClientId(next[0]?.id || "");

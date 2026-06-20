@@ -40,12 +40,27 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Создавать клиентов может только тренер" }, { status: 403, headers: corsHeaders });
     }
 
-    const { userId, email, password, name, telegram } = await req.json();
+    const { action, userId, email, password, name, telegram } = await req.json();
+
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    if (action === "delete") {
+      if (!userId) {
+        return Response.json({ error: "Не передан userId клиента для удаления" }, { status: 400, headers: corsHeaders });
+      }
+
+      await adminClient.from("profiles").delete().eq("id", userId);
+      const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
+      if (deleteError) {
+        return Response.json({ error: deleteError.message || "Не удалось удалить аккаунт клиента" }, { status: 400, headers: corsHeaders });
+      }
+
+      return Response.json({ ok: true }, { headers: corsHeaders });
+    }
+
     if (!password || password.length < 8) {
       return Response.json({ error: "Укажите пароль минимум 8 символов" }, { status: 400, headers: corsHeaders });
     }
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     if (userId) {
       const { data: updated, error: updateError } = await adminClient.auth.admin.updateUserById(userId, {

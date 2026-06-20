@@ -48,3 +48,37 @@ export const createClientAccount = async (payload: {
 
   return data as CreatedClientAccount;
 };
+
+
+export const deleteClientAccount = async (userId: string): Promise<void> => {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+
+  if (!token) {
+    throw new Error("Сессия Supabase не найдена. Выйдите из кабинета и войдите заново.");
+  }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase не настроен в переменных Vercel");
+  }
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/create-client-account`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action: "delete", userId }),
+  });
+
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error || `Edge Function вернула ошибку ${response.status}`);
+  }
+};

@@ -137,6 +137,29 @@ export const createClientRecord = async (coachId: string): Promise<Client> => {
   return dbClientToClient(data);
 };
 
+export const createClientRecordFromClient = async (coachId: string, client: Client): Promise<Client> => {
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      coach_id: coachId,
+      name: client.name || "Новый клиент",
+      telegram: client.telegram || "@username",
+      email: client.email || "",
+      goal: client.goal || "",
+      status: client.status || "Новый",
+      progress: client.progress || 0,
+      next_workout: client.nextWorkout || "",
+      comment: client.comment || "",
+      nutrition: client.nutrition || "",
+      user_id: client.userId || null,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return dbClientToClient(data, [], client.weeklyPlan || {});
+};
+
+
 export const updateClientRecord = async (coachId: string, client: Client) => {
   const { error } = await supabase.from("clients").update({
     name: client.name,

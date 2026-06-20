@@ -3,7 +3,7 @@ import { enablePushNotifications } from "../lib/push";
 import { createClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord } from "../lib/db";
+import { createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient } from "../lib/db";
 
 type Application = {
   id: string;
@@ -233,19 +233,19 @@ const CoachDashboard = () => {
     };
 
     try {
-      const createdClient = isSupabaseConfigured && user?.id ? await createClientRecord(user.id) : client;
-      const finalClient = { ...createdClient, ...client, id: createdClient.id };
+      const finalClient = isSupabaseConfigured && user?.id ? await createClientRecordFromClient(user.id, client) : client;
       saveClients([finalClient, ...clients]);
       setSelectedClientId(finalClient.id);
       setTab("clients");
       if (isSupabaseConfigured && user?.id) {
-        await updateClientRecord(user.id, finalClient);
+        if (finalClient.weeklyPlan && Object.keys(finalClient.weeklyPlan).length) await replaceWeeklyPlanRecord(user.id, finalClient.id, finalClient.weeklyPlan);
         await supabase.from("applications").update({ status: "Добавлена в клиенты" }).eq("id", application.id);
         setApplications((current) => current.map((item) => item.id === application.id ? { ...item, status: "Добавлена в клиенты" } : item));
         loadApplications();
       }
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось добавить заявку в клиенты");
+      const details = error instanceof Error ? error.message : typeof error === "object" && error ? JSON.stringify(error) : String(error);
+      setSyncStatus(`Не удалось добавить заявку в клиенты: ${details}`);
     }
   };
 
@@ -387,11 +387,26 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
   const [nextPlanDraft, setNextPlanDraft] = useState(client.nextPlanId || "");
   const [nextPlanDateDraft, setNextPlanDateDraft] = useState(client.nextPlanWeekStart || "");
 
+  const buildPassword = () => {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    return Array.from({ length: 12 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  };
+
   useEffect(() => {
     setAssignedPlanDraft(client.assignedWorkoutId || "");
     setNextPlanDraft(client.nextPlanId || "");
     setNextPlanDateDraft(client.nextPlanWeekStart || "");
-  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart]);
+    if (!client.userId) {
+      const password = buildPassword();
+      setClientPassword(password);
+      setShowClientPassword(true);
+      setAccountStatus("Пароль сгенерирован автоматически. Создай аккаунт и отправь пароль клиенту.");
+    } else {
+      setClientPassword("");
+      setShowClientPassword(false);
+      setAccountStatus("Клиентский аккаунт уже привязан. При необходимости сгенерируй новый пароль и нажми «Обновить пароль».");
+    }
+  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart, client.userId]);
 
   const nextMonday = () => {
     const date = new Date();
@@ -413,8 +428,7 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
   };
 
   const generatePassword = () => {
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
-    const password = Array.from({ length: 12 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+    const password = buildPassword();
     setClientPassword(password);
     setShowClientPassword(true);
     setAccountStatus("Новый пароль сгенерирован. Скопируй его и отправь клиенту.");

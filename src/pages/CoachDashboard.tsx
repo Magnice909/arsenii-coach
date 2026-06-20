@@ -135,13 +135,24 @@ const CoachDashboard = () => {
 
   const deleteClient = async () => {
     if (!selectedClient || !confirm(`Удалить клиента ${selectedClient.name}?`)) return;
+    const removedClient = selectedClient;
     try {
-      if (isSupabaseConfigured && user?.id) await deleteClientRecord(user.id, selectedClient.id);
-      const next = clients.filter((client) => client.id !== selectedClient.id);
+      if (isSupabaseConfigured && user?.id) await deleteClientRecord(user.id, removedClient.id);
+      const next = clients.filter((client) => client.id !== removedClient.id);
       saveClients(next);
       setSelectedClientId(next[0]?.id || "");
+      if (isSupabaseConfigured) {
+        if (removedClient.email) await supabase.from("applications").update({ status: "Новая" }).eq("email", removedClient.email);
+        if (removedClient.telegram) await supabase.from("applications").update({ status: "Новая" }).eq("telegram", removedClient.telegram);
+      }
+      setApplications((current) => current.map((application) =>
+        (application.email && application.email === removedClient.email) || (application.telegram && application.telegram === removedClient.telegram)
+          ? { ...application, status: "Новая" }
+          : application
+      ));
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось удалить клиента");
+      const details = error instanceof Error ? error.message : typeof error === "object" && error ? JSON.stringify(error) : String(error);
+      setSyncStatus(`Не удалось удалить клиента: ${details}`);
     }
   };
 
@@ -212,6 +223,20 @@ const CoachDashboard = () => {
       } catch (error) {
         setSyncStatus(error instanceof Error ? error.message : "Не удалось назначить план");
       }
+    }
+  };
+
+  const deleteApplication = async (application: Application) => {
+    if (!confirm(`Удалить заявку ${application.name || application.email || "без имени"}?`)) return;
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from("applications").delete().eq("id", application.id);
+        if (error) throw error;
+      }
+      setApplications((current) => current.filter((item) => item.id !== application.id));
+    } catch (error) {
+      const details = error instanceof Error ? error.message : typeof error === "object" && error ? JSON.stringify(error) : String(error);
+      setApplicationsStatus(`Не удалось удалить заявку: ${details}`);
     }
   };
 
@@ -295,7 +320,7 @@ const CoachDashboard = () => {
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} /></Panel></div>
         </div>}
 
-        {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} onCreateClient={createClientFromApplication} /></Panel>}
+        {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
         {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
@@ -317,7 +342,7 @@ const Metric = ({ title, value, onClick, hint }: { title: string; value: string 
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
 const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-3xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3"><div><h3 className="font-bold text-xl">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p></div><div className="text-left md:text-right"><span className="rounded-full px-3 py-1 text-sm" style={{ background: c.status === "Пропуск" ? "rgba(255,120,140,.13)" : "rgba(104,225,253,.13)", color: c.status === "Пропуск" ? "#ff8a98" : "var(--accent)" }}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
-const ApplicationsList = ({ applications, onCreateClient }: { applications: Application[]; onCreateClient: (application: Application) => void }) => {
+const ApplicationsList = ({ applications, onCreateClient, onDeleteApplication }: { applications: Application[]; onCreateClient: (application: Application) => void; onDeleteApplication: (application: Application) => void }) => {
   if (!applications.length) return <p style={{ color: "var(--ink-2)" }}>Заявок пока нет.</p>;
 
   return (
@@ -335,7 +360,10 @@ const ApplicationsList = ({ applications, onCreateClient }: { applications: Appl
               <p className="mt-1" style={{ color: "var(--ink-2)" }}>{application.telegram} • {application.email}</p>
               {application.created_at && <p className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>{new Date(application.created_at).toLocaleString("ru-RU")}</p>}
             </div>
-            {isAdded ? <span className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(104,225,253,.12)", color: "var(--accent)" }}>Уже в клиентах</span> : <button onClick={() => onCreateClient(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить в клиенты</button>}
+            <div className="flex gap-2 flex-wrap">
+              {isAdded ? <span className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(104,225,253,.12)", color: "var(--accent)" }}>Уже в клиентах</span> : <button onClick={() => onCreateClient(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить в клиенты</button>}
+              <button onClick={() => onDeleteApplication(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить заявку</button>
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 text-sm" style={{ color: "var(--ink-2)" }}>
             <p><b style={{ color: "var(--ink)" }}>Цель:</b> {application.goal || "—"}</p>

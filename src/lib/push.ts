@@ -15,7 +15,7 @@ export const isPushSupported = () => "serviceWorker" in navigator && "PushManage
 
 export const enablePushNotifications = async (userId?: string) => {
   if (!isPushSupported()) throw new Error("Этот браузер не поддерживает push-уведомления");
-  if (!publicVapidKey) throw new Error("Не задан VITE_VAPID_PUBLIC_KEY");
+  if (!publicVapidKey) throw new Error("Не задан VITE_VAPID_PUBLIC_KEY. Добавь VAPID public key в Vercel → Environment Variables и сделай Redeploy.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Разрешение на уведомления не выдано");
   const registration = await navigator.serviceWorker.register("/sw.js");

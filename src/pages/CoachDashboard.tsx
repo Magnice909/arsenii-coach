@@ -304,11 +304,16 @@ const CoachDashboard = () => {
   };
 
   const markMessageRead = async (messageId: string) => {
+    const next = messages.filter((message) => message.id !== messageId);
+    updateMessages(next);
+    setMessages(next);
     try {
-      if (isSupabaseConfigured) await markNotificationRead(messageId);
-      const next = messages.filter((message) => message.id !== messageId);
-      updateMessages(next);
-      setMessages(next);
+      if (isSupabaseConfigured) {
+        await markNotificationRead(messageId);
+        const fresh = await fetchCoachNotifications();
+        updateMessages(fresh);
+        setMessages(fresh);
+      }
     } catch (error) {
       setSyncStatus(error instanceof Error ? error.message : "Не удалось отметить событие");
     }

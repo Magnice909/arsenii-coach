@@ -161,3 +161,7 @@ using (
 );
 
 grant select, insert, update, delete on public.strength_records to authenticated, service_role;
+
+-- Прочитанные уведомления тренера
+alter table public.notifications add column if not exists read_at timestamp with time zone;
+grant select, insert, update, delete on public.notifications to authenticated, service_role;

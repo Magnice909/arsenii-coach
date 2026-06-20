@@ -34,3 +34,8 @@ export const sendCoachPush = async (title: string, body: string) => {
   if (!isSupabaseConfigured) return;
   await supabase.functions.invoke("send-push", { body: { title, body, url: "/#/coach" } });
 };
+
+export const sendPushToUsers = async (userIds: string[], title: string, body: string, url = "/") => {
+  if (!isSupabaseConfigured || !userIds.length) return;
+  await supabase.functions.invoke("send-push", { body: { recipientIds: userIds, title, body, url } });
+};

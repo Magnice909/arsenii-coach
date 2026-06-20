@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { sendCoachPush } from "../lib/push";
+import { enablePushNotifications, sendCoachPush } from "../lib/push";
 import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, getCompletionForToday, getDayWorkout, markWorkoutCompleted, weekDays } from "../lib/db";
 import { Client, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -15,6 +15,7 @@ const ClientDashboard = () => {
   const [completedToday, setCompletedToday] = useState(false);
   const [history, setHistory] = useState<CompletionHistoryItem[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
+  const [pushStatus, setPushStatus] = useState("");
 
   const todayName = weekDays[(new Date().getDay() + 6) % 7];
   const todayPlanId = client?.weeklyPlan?.[todayName];
@@ -68,6 +69,15 @@ const ClientDashboard = () => {
     };
     load();
   }, [user?.id]);
+
+  const enableClientPush = async () => {
+    try {
+      await enablePushNotifications(user?.id);
+      setPushStatus("Уведомления включены на этом устройстве");
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : "Не удалось включить уведомления");
+    }
+  };
 
   const exit = () => { logout(); window.location.hash = "/"; };
 
@@ -130,7 +140,7 @@ const ClientDashboard = () => {
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
                 {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
-        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a></Panel>}
+        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a><div className="app-card rounded-3xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
       </section>
     </main>
   );
@@ -148,7 +158,7 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
     <div className="space-y-4">
       <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
         Фильтр по плану
-        <select value={selectedWorkoutId} onChange={(event) => setSelectedWorkoutId(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+        <select value={selectedWorkoutId} onChange={(event) => setSelectedWorkoutId(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
           <option value="all">Все планы</option>
           {plans.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
         </select>
@@ -229,10 +239,10 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
         <h3 className="text-2xl font-bold">Силовой прогресс</h3>
         <p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>Добавляй максимальный вес по упражнениям в любое время. Данные сохраняются отдельно от отметки тренировки.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>{muscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<input list="strength-exercises" value={exerciseName} onChange={(event) => setExerciseName(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /><datalist id="strength-exercises">{exerciseOptions.map((exercise) => <option key={exercise} value={exercise} />)}</datalist></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Максимальный вес, кг<input type="number" min="0" step="0.5" value={maxWeight} onChange={(event) => setMaxWeight(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>{muscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<input list="strength-exercises" value={exerciseName} onChange={(event) => setExerciseName(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /><datalist id="strength-exercises">{exerciseOptions.map((exercise) => <option key={exercise} value={exercise} />)}</datalist></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Максимальный вес, кг<input type="number" min="0" step="0.5" value={maxWeight} onChange={(event) => setMaxWeight(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
         </div>
         <button onClick={addRecord} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить показатель</button>
         {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
@@ -241,8 +251,8 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
       <div className="app-card rounded-3xl p-5">
         <h3 className="text-2xl font-bold">Диаграмма силы</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по группе<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по упражнению<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по группе<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по упражнению<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
         </div>
         <StrengthChart records={filteredRecords} />
       </div>

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { enablePushNotifications } from "../lib/push";
+import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient } from "../lib/db";
 
 type Application = {
   id: string;
@@ -42,6 +42,7 @@ const CoachDashboard = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationsStatus, setApplicationsStatus] = useState("");
   const [pushStatus, setPushStatus] = useState("");
+  const [selectedClientStrength, setSelectedClientStrength] = useState<StrengthRecord[]>([]);
   const [syncStatus, setSyncStatus] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id || "");
   const [selectedWorkoutId, setSelectedWorkoutId] = useState(workouts[0]?.id || "");
@@ -75,6 +76,18 @@ const CoachDashboard = () => {
 
   useEffect(() => { loadAllData(); }, [user?.id]);
   useEffect(() => { if (tab === "applications") loadApplications(); }, [tab]);
+  useEffect(() => {
+    const loadStrength = async () => {
+      if (!isSupabaseConfigured || !selectedClientId) { setSelectedClientStrength([]); return; }
+      try {
+        setSelectedClientStrength(await fetchCoachClientStrengthRecords(selectedClientId));
+      } catch {
+        setSelectedClientStrength([]);
+      }
+    };
+    if (tab === "clients") loadStrength();
+  }, [tab, selectedClientId]);
+
   useEffect(() => { if (tab === "messages" && isSupabaseConfigured) fetchCoachNotifications().then((next) => { updateMessages(next); setMessages(next); }).catch(() => {}); }, [tab]);
 
   const saveClients = (next: Client[]) => { updateClients(next); setClients(next); };
@@ -113,9 +126,11 @@ const CoachDashboard = () => {
     saveClients(next);
 
     if (isSupabaseConfigured && user?.id) {
+      const planChanged = Boolean(patch.weeklyPlan || patch.assignedWorkoutId || patch.nextPlanId || patch.nextPlanWeekStart);
       updateClientRecord(user.id, updated)
-        .then(() => {
-          if (patch.weeklyPlan || patch.assignedWorkoutId) return replaceWeeklyPlanRecord(user.id!, updated.id, updated.weeklyPlan || {});
+        .then(async () => {
+          if (patch.weeklyPlan || patch.assignedWorkoutId) await replaceWeeklyPlanRecord(user.id!, updated.id, updated.weeklyPlan || {});
+          if (planChanged && updated.userId) await sendPushToUsers([updated.userId], "Новый план тренировок", "Арсений обновил ваш тренировочный план", "/#/client");
         })
         .catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить клиента"));
     }
@@ -218,10 +233,12 @@ const CoachDashboard = () => {
     saveClients(nextClients);
     if (isSupabaseConfigured && user?.id) {
       try {
-        for (const client of nextClients.filter((item) => clientIds.includes(item.id))) {
+        const assignedClients = nextClients.filter((item) => clientIds.includes(item.id));
+        for (const client of assignedClients) {
           await updateClientRecord(user.id, client);
           await replaceWeeklyPlanRecord(user.id, client.id, client.weeklyPlan || {});
         }
+        await sendPushToUsers(assignedClients.map((client) => client.userId || "").filter(Boolean), "Новый план тренировок", `Арсений назначил план ${workout.title}`, "/#/client");
         setSyncStatus("План назначен выбранным клиентам");
       } catch (error) {
         setSyncStatus(error instanceof Error ? error.message : "Не удалось назначить план");
@@ -286,6 +303,17 @@ const CoachDashboard = () => {
     }
   };
 
+  const markMessageRead = async (messageId: string) => {
+    try {
+      if (isSupabaseConfigured) await markNotificationRead(messageId);
+      const next = messages.filter((message) => message.id !== messageId);
+      updateMessages(next);
+      setMessages(next);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось отметить событие");
+    }
+  };
+
   const exit = () => { logout(); window.location.hash = "/"; };
 
   return (
@@ -320,19 +348,19 @@ const CoachDashboard = () => {
 
         {tab === "overview" && <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
-          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} /></Panel></div>
+          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
 
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
         {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
-        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
-        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
+        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
+        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-3xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
       </section>
     </main>
   );
@@ -389,7 +417,7 @@ const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteAppli
   );
 };
 
-const MessageList = ({ messages, onOpenClients }: { messages: Message[]; onOpenClients?: () => void }) => (
+const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Message[]; onOpenClients?: () => void; onMarkRead?: (id: string) => void }) => (
   <div className="space-y-3">
     <div className="app-card rounded-2xl p-4">
       <b>Как с этим работать</b>
@@ -403,7 +431,7 @@ const MessageList = ({ messages, onOpenClients }: { messages: Message[]; onOpenC
       <span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span>
       <div className="mt-3 flex gap-2 flex-wrap">
         {onOpenClients && <button onClick={onOpenClients} className="rounded-full px-4 py-2 glass text-sm">Открыть клиента</button>}
-        {m.url && <a href={m.url} className="rounded-full px-4 py-2 glass text-sm">Открыть событие</a>}
+        {onMarkRead && <button onClick={() => onMarkRead(m.id)} className="rounded-full px-4 py-2 glass text-sm">Прочитано</button>}
       </div>
     </div>)}
   </div>
@@ -413,7 +441,7 @@ const Field = ({ label, value, onChange, type = "text" }: { label: string; value
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
 const ReadOnlyInput = ({ label, value }: { label: string; value: string }) => <Field label={label} value={value} onChange={() => {}} />;
 
-const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client; workouts: Workout[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
+const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }: { client: Client; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
   const [clientPassword, setClientPassword] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
@@ -573,7 +601,61 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
       <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
       <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
+      <CoachStrengthProgress records={strengthRecords} />
       <button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить клиента</button>
+    </div>
+  );
+};
+
+
+const CoachStrengthProgress = ({ records }: { records: StrengthRecord[] }) => {
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [exerciseFilter, setExerciseFilter] = useState("all");
+  const groups = Array.from(new Set(records.map((record) => record.muscleGroup))).filter(Boolean);
+  const exercises = Array.from(new Set(records.map((record) => record.exerciseName))).filter(Boolean);
+  const filtered = records
+    .filter((record) => groupFilter === "all" || record.muscleGroup === groupFilter)
+    .filter((record) => exerciseFilter === "all" || record.exerciseName === exerciseFilter)
+    .sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
+
+  return (
+    <div className="app-card rounded-3xl p-4">
+      <h3 className="text-xl font-bold">Силовой прогресс клиента</h3>
+      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Данные, которые клиент сам добавляет в своём кабинете.</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
+      </div>
+      <CoachStrengthChart records={filtered} />
+    </div>
+  );
+};
+
+const CoachStrengthChart = ({ records }: { records: StrengthRecord[] }) => {
+  if (!records.length) return <p className="mt-4" style={{ color: "var(--ink-2)" }}>Клиент пока не добавлял силовые показатели.</p>;
+  const width = 640;
+  const height = 240;
+  const padding = 34;
+  const weights = records.map((record) => record.maxWeight);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = Math.max(1, max - min);
+  const points = records.map((record, index) => {
+    const x = records.length === 1 ? width / 2 : padding + (index * (width - padding * 2)) / (records.length - 1);
+    const y = height - padding - ((record.maxWeight - min) / range) * (height - padding * 2);
+    return { x, y, record };
+  });
+  const diff = records[records.length - 1].maxWeight - records[0].maxWeight;
+  return (
+    <div className="mt-4">
+      <p className="text-sm mb-3" style={{ color: diff >= 0 ? "var(--accent)" : "#ff8a98" }}>{records.length > 1 ? `Изменение: ${diff > 0 ? "+" : ""}${diff} кг` : "Нужна ещё одна запись для динамики"}</p>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full rounded-3xl" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
+        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,.18)" />
+        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,.18)" />
+        <polyline fill="none" stroke="var(--accent)" strokeWidth="4" points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
+        {points.map((point) => <g key={point.record.id}><circle cx={point.x} cy={point.y} r="6" fill="var(--accent)" /><text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="13" fill="white">{point.record.maxWeight} кг</text></g>)}
+      </svg>
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">{records.slice().reverse().map((record) => <div key={record.id} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)" }}><b>{record.exerciseName}</b><p className="text-sm" style={{ color: "var(--ink-2)" }}>{record.muscleGroup} • {record.maxWeight} кг • {new Date(record.recordedDate).toLocaleDateString("ru-RU")}</p></div>)}</div>
     </div>
   );
 };

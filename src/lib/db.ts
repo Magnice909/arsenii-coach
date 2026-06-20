@@ -298,7 +298,7 @@ export const saveSiteSettingsDb = async (settings: SiteSettings) => {
 };
 
 export const fetchCoachNotifications = async (): Promise<Message[]> => {
-  const { data, error } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(30);
+  const { data, error } = await supabase.from("notifications").select("*").is("read_at", null).order("created_at", { ascending: false }).limit(30);
   if (error) throw error;
   return (data || []).map((row: any) => ({ id: row.id || makeId(), from: row.title || "Уведомление", text: row.body || "", time: row.created_at ? new Date(row.created_at).toLocaleString("ru-RU") : "", url: row.url || "/#/coach" }));
 };
@@ -451,4 +451,23 @@ export const createStrengthRecord = async (record: {
 
   if (error) throw error;
   return dbStrengthRecordToRecord(data);
+};
+
+
+export const markNotificationRead = async (notificationId: string) => {
+  const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId);
+  if (error) throw error;
+};
+
+
+export const fetchCoachClientStrengthRecords = async (clientId: string): Promise<StrengthRecord[]> => {
+  const { data, error } = await supabase
+    .from("strength_records")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("recorded_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(dbStrengthRecordToRecord);
 };

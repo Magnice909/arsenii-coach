@@ -483,7 +483,7 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
             Временный пароль клиента
             <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
-              <input value={clientPassword} type={showClientPassword ? "text" : "password"} onChange={(e) => setClientPassword(e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+              <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="w-full rounded-xl px-4 py-3 cursor-default" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
               <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="rounded-xl px-4 glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
               <button type="button" onClick={generatePassword} className="rounded-xl px-4 glass">Сгенерировать</button>
             </div>
@@ -493,7 +493,7 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
           </button>
         </div>
         {client.userId && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>Клиентский аккаунт привязан. Пароль можно в любой момент сгенерировать заново и обновить.</p>}
-        {accountStatus && <p className="text-sm mt-3" style={{ color: accountStatus.includes("создан") ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
+        {accountStatus && <p className="text-sm mt-3" style={{ color: ["создан", "сгенерирован", "обновлён", "привязан", "Скопируй"].some((word) => accountStatus.includes(word)) ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
       </div>
 
       <div className="app-card rounded-3xl p-4">

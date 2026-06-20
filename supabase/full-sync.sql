@@ -165,3 +165,17 @@ grant select, insert, update, delete on public.strength_records to authenticated
 -- Прочитанные уведомления тренера
 alter table public.notifications add column if not exists read_at timestamp with time zone;
 grant select, insert, update, delete on public.notifications to authenticated, service_role;
+
+-- Разрешить тренеру удалять заявки
+DROP POLICY IF EXISTS "coach can delete applications" ON public.applications;
+CREATE POLICY "coach can delete applications"
+ON public.applications
+FOR DELETE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE profiles.id = auth.uid()
+    AND profiles.role = 'coach'
+  )
+);

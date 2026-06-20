@@ -124,3 +124,40 @@ grant select, insert, update, delete on public.applications to anon, authenticat
 -- План на следующую неделю
 alter table public.clients add column if not exists next_plan_id uuid references public.workouts(id) on delete set null;
 alter table public.clients add column if not exists next_plan_week_start date;
+
+-- Силовой прогресс клиента
+create table if not exists public.strength_records (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  muscle_group text not null,
+  exercise_name text not null,
+  max_weight numeric not null check (max_weight >= 0),
+  recorded_date date not null default current_date,
+  created_at timestamp with time zone default now()
+);
+
+alter table public.strength_records enable row level security;
+
+drop policy if exists "clients can manage own strength records" on public.strength_records;
+create policy "clients can manage own strength records"
+on public.strength_records
+for all
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "coach can read client strength records" on public.strength_records;
+create policy "coach can read client strength records"
+on public.strength_records
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.clients
+    where clients.id = strength_records.client_id
+    and clients.coach_id = auth.uid()
+  )
+);
+
+grant select, insert, update, delete on public.strength_records to authenticated, service_role;

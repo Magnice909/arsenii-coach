@@ -707,7 +707,6 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Название недельного плана" value={draft.title} onChange={(title) => { setDraft({ ...draft, title }); setStatus(""); }} />
-        <Field label="Краткий фокус плана" value={draft.focus} onChange={(focus) => { setDraft({ ...draft, focus }); setStatus(""); }} />
       </div>
       <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
 

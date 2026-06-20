@@ -391,3 +391,64 @@ export const fetchClientCompletionHistory = async (clientId: string, userId: str
     };
   });
 };
+
+
+export type StrengthRecord = {
+  id: string;
+  clientId: string;
+  userId: string;
+  muscleGroup: string;
+  exerciseName: string;
+  maxWeight: number;
+  recordedDate: string;
+  createdAt?: string;
+};
+
+const dbStrengthRecordToRecord = (row: any): StrengthRecord => ({
+  id: row.id,
+  clientId: row.client_id,
+  userId: row.user_id,
+  muscleGroup: row.muscle_group || "Другое",
+  exerciseName: row.exercise_name || "Упражнение",
+  maxWeight: Number(row.max_weight || 0),
+  recordedDate: row.recorded_date,
+  createdAt: row.created_at,
+});
+
+export const fetchClientStrengthRecords = async (clientId: string, userId: string): Promise<StrengthRecord[]> => {
+  const { data, error } = await supabase
+    .from("strength_records")
+    .select("*")
+    .eq("client_id", clientId)
+    .eq("user_id", userId)
+    .order("recorded_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(dbStrengthRecordToRecord);
+};
+
+export const createStrengthRecord = async (record: {
+  clientId: string;
+  userId: string;
+  muscleGroup: string;
+  exerciseName: string;
+  maxWeight: number;
+  recordedDate: string;
+}): Promise<StrengthRecord> => {
+  const { data, error } = await supabase
+    .from("strength_records")
+    .insert({
+      client_id: record.clientId,
+      user_id: record.userId,
+      muscle_group: record.muscleGroup,
+      exercise_name: record.exerciseName,
+      max_weight: record.maxWeight,
+      recorded_date: record.recordedDate,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return dbStrengthRecordToRecord(data);
+};

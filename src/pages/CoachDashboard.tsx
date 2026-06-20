@@ -427,6 +427,8 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
     return Array.from({ length: 12 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   };
 
+  const passwordStorageKey = (clientId: string) => `arseniiCoachTempPassword:${clientId}`;
+
   useEffect(() => {
     setAssignedPlanDraft(client.assignedWorkoutId || "");
     setNextPlanDraft(client.nextPlanId || "");
@@ -434,15 +436,24 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
   }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart]);
 
   useEffect(() => {
+    const savedPassword = sessionStorage.getItem(passwordStorageKey(client.id)) || "";
+    if (savedPassword) {
+      setClientPassword(savedPassword);
+      setShowClientPassword(false);
+      setAccountStatus("Пароль сохранён временно в этой вкладке. Нажми «Показать», скопируй его и отправь клиенту.");
+      return;
+    }
+
     if (!client.userId) {
       const password = buildPassword();
+      sessionStorage.setItem(passwordStorageKey(client.id), password);
       setClientPassword(password);
-      setShowClientPassword(true);
-      setAccountStatus("Пароль сгенерирован автоматически. Создай аккаунт и отправь пароль клиенту.");
+      setShowClientPassword(false);
+      setAccountStatus("Пароль сгенерирован автоматически. Нажми «Показать», затем создай аккаунт и отправь пароль клиенту.");
     } else {
       setClientPassword("");
       setShowClientPassword(false);
-      setAccountStatus("Клиентский аккаунт уже привязан. При необходимости сгенерируй новый пароль и нажми «Обновить пароль».");
+      setAccountStatus("Клиентский аккаунт уже привязан. Если пароль не сохранился на экране, сгенерируй новый и нажми «Обновить пароль».");
     }
   }, [client.id]);
 
@@ -467,9 +478,10 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
 
   const generatePassword = () => {
     const password = buildPassword();
+    sessionStorage.setItem(passwordStorageKey(client.id), password);
     setClientPassword(password);
-    setShowClientPassword(true);
-    setAccountStatus("Новый пароль сгенерирован. Скопируй его и отправь клиенту.");
+    setShowClientPassword(false);
+    setAccountStatus("Новый пароль сгенерирован. Нажми «Показать», скопируй его и отправь клиенту.");
   };
 
   const createAccount = async () => {
@@ -492,9 +504,10 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
         telegram: client.telegram,
         userId: client.userId,
       });
+      sessionStorage.setItem(passwordStorageKey(client.id), clientPassword);
       onChange({ userId: created.userId });
-      setShowClientPassword(true);
-      setAccountStatus(client.userId ? "Пароль клиента обновлён. Скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Пароль оставлен на экране — скопируй его и отправь клиенту.");
+      setShowClientPassword(false);
+      setAccountStatus(client.userId ? "Пароль клиента обновлён. Нажми «Показать», скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Пароль сохранён в этой вкладке. Нажми «Показать», скопируй его и отправь клиенту.");
     } catch (error) {
       setAccountStatus(error instanceof Error ? error.message : "Не удалось создать аккаунт клиента");
     } finally {

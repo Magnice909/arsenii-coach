@@ -22,6 +22,9 @@ const calculateProgress = (scheduledPlan: Record<string, string>, completions: {
   return Math.min(100, Math.round((completed / scheduledKeys.length) * 100));
 };
 
+const isNextPlanDue = (date?: string | null) => Boolean(date && new Date(date + "T00:00:00") <= new Date());
+const buildWeeklyPlanFromWorkout = (workout?: Workout): Record<string, string> => workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, workout.id])) : {};
+
 const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record<string, string> = {}): Client => {
   const assignedWorkoutId = Object.values(weeklyPlan)[0] || "";
   const workout = workouts.find((item) => item.id === assignedWorkoutId);
@@ -41,6 +44,8 @@ const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record
     nutrition: row.nutrition || "",
     assignedWorkoutId,
     weeklyPlan,
+    nextPlanId: row.next_plan_id || undefined,
+    nextPlanWeekStart: row.next_plan_week_start || undefined,
   };
 };
 
@@ -109,8 +114,13 @@ export const fetchCoachData = async (coachId: string) => {
   }
 
   const clients = (clientRows || []).map((row) => {
-    const weeklyPlan = planByClient[row.id] || {};
+    const dueNextWorkout = isNextPlanDue(row.next_plan_week_start) ? workouts.find((workout) => workout.id === row.next_plan_id) : undefined;
+    const weeklyPlan = dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : (planByClient[row.id] || {});
     const client = dbClientToClient(row, workouts, weeklyPlan);
+    if (dueNextWorkout) {
+      client.assignedWorkoutId = dueNextWorkout.id;
+      client.plan = dueNextWorkout.title;
+    }
     client.progress = calculateProgress(weeklyPlan, completedByClient[row.id] || []);
     return client;
   });
@@ -139,6 +149,8 @@ export const updateClientRecord = async (coachId: string, client: Client) => {
     comment: client.comment,
     nutrition: client.nutrition,
     user_id: client.userId || null,
+    next_plan_id: client.nextPlanId || null,
+    next_plan_week_start: client.nextPlanWeekStart || null,
   }).eq("id", client.id).eq("coach_id", coachId);
   if (error) throw error;
 };
@@ -195,7 +207,7 @@ export const fetchClientData = async (userId: string) => {
   const { data: planRows, error: plansError } = await supabase.from("weekly_plans").select("*").eq("client_id", clientRow.id);
   if (plansError) throw plansError;
 
-  const workoutIds = [...new Set((planRows || []).map((row) => row.workout_id))];
+  const workoutIds = [...new Set([...(planRows || []).map((row) => row.workout_id), clientRow.next_plan_id].filter(Boolean))];
   const { data: workoutRows, error: workoutsError } = workoutIds.length
     ? await supabase.from("workouts").select("*").in("id", workoutIds)
     : { data: [], error: null } as any;
@@ -214,8 +226,14 @@ export const fetchClientData = async (userId: string) => {
     .gte("completed_date", start)
     .lte("completed_date", end);
 
-  const client = dbClientToClient(clientRow, workouts, weeklyPlan);
-  client.progress = calculateProgress(weeklyPlan, (completionRows || []) as { day_of_week: string; workout_id: string }[]);
+  const dueNextWorkout = isNextPlanDue(clientRow.next_plan_week_start) ? workouts.find((item: Workout) => item.id === clientRow.next_plan_id) : undefined;
+  const effectiveWeeklyPlan = dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : weeklyPlan;
+  const client = dbClientToClient(clientRow, workouts, effectiveWeeklyPlan);
+  if (dueNextWorkout) {
+    client.assignedWorkoutId = dueNextWorkout.id;
+    client.plan = dueNextWorkout.title;
+  }
+  client.progress = calculateProgress(effectiveWeeklyPlan, (completionRows || []) as { day_of_week: string; workout_id: string }[]);
 
   return { client, workouts };
 };
@@ -259,7 +277,7 @@ export const saveSiteSettingsDb = async (settings: SiteSettings) => {
 export const fetchCoachNotifications = async (): Promise<Message[]> => {
   const { data, error } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(30);
   if (error) throw error;
-  return (data || []).map((row: any) => ({ id: row.id || makeId(), from: row.title || "Уведомление", text: row.body || "", time: row.created_at ? new Date(row.created_at).toLocaleString("ru-RU") : "" }));
+  return (data || []).map((row: any) => ({ id: row.id || makeId(), from: row.title || "Уведомление", text: row.body || "", time: row.created_at ? new Date(row.created_at).toLocaleString("ru-RU") : "", url: row.url || "/#/coach" }));
 };
 
 export const createNotification = async (recipientId: string, title: string, body: string, url = "/") => {

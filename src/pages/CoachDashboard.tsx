@@ -241,6 +241,7 @@ const CoachDashboard = () => {
       if (isSupabaseConfigured && user?.id) {
         await updateClientRecord(user.id, finalClient);
         await supabase.from("applications").update({ status: "Добавлена в клиенты" }).eq("id", application.id);
+        setApplications((current) => current.map((item) => item.id === application.id ? { ...item, status: "Добавлена в клиенты" } : item));
         loadApplications();
       }
     } catch (error) {
@@ -290,8 +291,8 @@ const CoachDashboard = () => {
         {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4" style={{ color: "#ffb4c1" }}>{syncStatus}</div>}
 
         {tab === "overview" && <div className="relative z-10 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} /></div>
-          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} /></Panel></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
+          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} /></Panel></div>
         </div>}
 
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} onCreateClient={createClientFromApplication} /></Panel>}
@@ -302,14 +303,18 @@ const CoachDashboard = () => {
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
         {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
-        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
+        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
       </section>
     </main>
   );
 };
 
-const Metric = ({ title, value }: { title: string; value: string | number }) => <div className="glass rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-3xl mt-2 block">{value}</b></div>;
+const Metric = ({ title, value, onClick, hint }: { title: string; value: string | number; onClick?: () => void; hint?: string }) => {
+  const content = <><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-3xl mt-2 block">{value}</b>{hint && <span className="text-xs mt-2 block" style={{ color: "var(--accent)" }}>{hint}</span>}</>;
+  if (onClick) return <button onClick={onClick} className="glass rounded-3xl p-5 text-left hover:scale-[1.01] transition">{content}</button>;
+  return <div className="glass rounded-3xl p-5">{content}</div>;
+};
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
 const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-3xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3"><div><h3 className="font-bold text-xl">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p></div><div className="text-left md:text-right"><span className="rounded-full px-3 py-1 text-sm" style={{ background: c.status === "Пропуск" ? "rgba(255,120,140,.13)" : "rgba(104,225,253,.13)", color: c.status === "Пропуск" ? "#ff8a98" : "var(--accent)" }}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const ApplicationsList = ({ applications, onCreateClient }: { applications: Application[]; onCreateClient: (application: Application) => void }) => {
@@ -317,7 +322,9 @@ const ApplicationsList = ({ applications, onCreateClient }: { applications: Appl
 
   return (
     <div className="space-y-4">
-      {applications.map((application) => (
+      {applications.map((application) => {
+        const isAdded = (application.status || "").toLowerCase().includes("добав");
+        return (
         <div key={application.id} className="app-card rounded-3xl p-5">
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
             <div>
@@ -328,7 +335,7 @@ const ApplicationsList = ({ applications, onCreateClient }: { applications: Appl
               <p className="mt-1" style={{ color: "var(--ink-2)" }}>{application.telegram} • {application.email}</p>
               {application.created_at && <p className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>{new Date(application.created_at).toLocaleString("ru-RU")}</p>}
             </div>
-            <button onClick={() => onCreateClient(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить в клиенты</button>
+            {isAdded ? <span className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(104,225,253,.12)", color: "var(--accent)" }}>Уже в клиентах</span> : <button onClick={() => onCreateClient(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить в клиенты</button>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 text-sm" style={{ color: "var(--ink-2)" }}>
             <p><b style={{ color: "var(--ink)" }}>Цель:</b> {application.goal || "—"}</p>
@@ -341,12 +348,31 @@ const ApplicationsList = ({ applications, onCreateClient }: { applications: Appl
             <p><b style={{ color: "var(--ink)" }}>Instagram:</b> {application.instagram || "—"}</p>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
 
-const MessageList = ({ messages }: { messages: Message[] }) => <div className="space-y-3">{messages.map(m => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span></div>)}</div>;
+const MessageList = ({ messages, onOpenClients }: { messages: Message[]; onOpenClients?: () => void }) => (
+  <div className="space-y-3">
+    <div className="app-card rounded-2xl p-4">
+      <b>Как с этим работать</b>
+      <p className="mt-1 text-sm" style={{ color: "var(--ink-2)" }}>Это не чат, а список событий: заявка, выполненная тренировка или действие клиента. Чтобы ответить, открой клиента и напиши ему в Telegram, либо поменяй план/комментарий в карточке клиента.</p>
+      {onOpenClients && <button onClick={onOpenClients} className="mt-3 rounded-full px-4 py-2 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Открыть клиентов</button>}
+    </div>
+    {!messages.length && <p style={{ color: "var(--ink-2)" }}>Новых событий пока нет.</p>}
+    {messages.map(m => <div key={m.id} className="app-card rounded-2xl p-4">
+      <b>{m.from}</b>
+      <p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p>
+      <span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span>
+      <div className="mt-3 flex gap-2 flex-wrap">
+        {onOpenClients && <button onClick={onOpenClients} className="rounded-full px-4 py-2 glass text-sm">Открыть клиента</button>}
+        {m.url && <a href={m.url} className="rounded-full px-4 py-2 glass text-sm">Открыть событие</a>}
+      </div>
+    </div>)}
+  </div>
+);
 
 const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
@@ -357,6 +383,34 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [showClientPassword, setShowClientPassword] = useState(false);
+  const [assignedPlanDraft, setAssignedPlanDraft] = useState(client.assignedWorkoutId || "");
+  const [nextPlanDraft, setNextPlanDraft] = useState(client.nextPlanId || "");
+  const [nextPlanDateDraft, setNextPlanDateDraft] = useState(client.nextPlanWeekStart || "");
+
+  useEffect(() => {
+    setAssignedPlanDraft(client.assignedWorkoutId || "");
+    setNextPlanDraft(client.nextPlanId || "");
+    setNextPlanDateDraft(client.nextPlanWeekStart || "");
+  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart]);
+
+  const nextMonday = () => {
+    const date = new Date();
+    const day = (date.getDay() + 6) % 7;
+    date.setDate(date.getDate() - day + 7);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const savePlanAssignment = () => {
+    const workout = workouts.find((item) => item.id === assignedPlanDraft);
+    const weeklyPlan = workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, assignedPlanDraft])) : {};
+    onChange({
+      assignedWorkoutId: assignedPlanDraft,
+      weeklyPlan,
+      plan: workout?.title || "",
+      nextPlanId: nextPlanDraft || undefined,
+      nextPlanWeekStart: nextPlanDraft ? (nextPlanDateDraft || nextMonday()) : undefined,
+    });
+  };
 
   const generatePassword = () => {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
@@ -429,12 +483,26 @@ const ClientEditor = ({ client, workouts, onChange, onDelete }: { client: Client
       </div>
 
       <div className="app-card rounded-3xl p-4">
-        <h3 className="text-xl font-bold">Назначенный недельный план</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери один план. Дни недели и тренировки уже находятся внутри самого плана.</p>
-        <select value={client.assignedWorkoutId} onChange={(e) => { const workout = workouts.find(w => w.id === e.target.value); const weeklyPlan = workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, e.target.value])) : {}; onChange({ assignedWorkoutId: e.target.value, weeklyPlan, plan: workout?.title || client.plan }); }} className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
-          <option value="">План не выбран</option>
-          {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
-        </select>
+        <h3 className="text-xl font-bold">Назначение плана</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери текущий план и, если нужно, план на следующую неделю. Изменения применятся после кнопки «Сохранить назначение».</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+            Текущий план
+            <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+              <option value="">План не выбран</option>
+              {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+            План на следующую неделю
+            <select value={nextPlanDraft} onChange={(e) => { setNextPlanDraft(e.target.value); if (e.target.value && !nextPlanDateDraft) setNextPlanDateDraft(nextMonday()); }} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+              <option value="">Не назначать заранее</option>
+              {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+            </select>
+          </label>
+          <Field label="Дата начала следующего плана" type="date" value={nextPlanDateDraft} onChange={setNextPlanDateDraft} />
+        </div>
+        <button type="button" onClick={savePlanAssignment} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить назначение</button>
       </div>
       <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />

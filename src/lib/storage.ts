@@ -24,6 +24,8 @@ export type Client = {
   nutrition: string;
   assignedWorkoutId: string;
   weeklyPlan: Record<string, string>;
+  nextPlanId?: string;
+  nextPlanWeekStart?: string;
 };
 
 export type DayWorkout = {
@@ -50,6 +52,7 @@ export type Message = {
   from: string;
   text: string;
   time: string;
+  url?: string;
 };
 
 export type SiteSettings = {

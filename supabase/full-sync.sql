@@ -119,3 +119,8 @@ alter table public.applications add column if not exists start_timeline text;
 alter table public.applications add column if not exists looking_for text;
 alter table public.applications add column if not exists ready_to_invest text;
 grant select, insert, update, delete on public.applications to anon, authenticated, service_role;
+
+
+-- План на следующую неделю
+alter table public.clients add column if not exists next_plan_id uuid references public.workouts(id) on delete set null;
+alter table public.clients add column if not exists next_plan_week_start date;

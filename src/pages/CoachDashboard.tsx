@@ -3,7 +3,9 @@ import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto } from "../lib/db";
+import CalendarView from "../components/CalendarView";
+import { buildCalendarEntries, CalendarWorkoutEntry } from "../lib/calendar";
 
 type Application = {
   id: string;
@@ -13,11 +15,8 @@ type Application = {
   obstacle: string;
   commitment: string;
   start_timeline?: string;
-  startTimeline?: string;
   looking_for?: string;
-  lookingFor?: string;
   ready_to_invest?: string;
-  readyToInvest?: string;
   telegram: string;
   email: string;
   instagram?: string;
@@ -46,6 +45,8 @@ const CoachDashboard = () => {
   const [syncStatus, setSyncStatus] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id || "");
   const [selectedWorkoutId, setSelectedWorkoutId] = useState(workouts[0]?.id || "");
+  const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
+  const [calendarLoading, setCalendarLoading] = useState(false);
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0];
   const selectedWorkout = workouts.find((w) => w.id === selectedWorkoutId) || workouts[0];
   const average = useMemo(() => clients.length ? Math.round(clients.reduce((sum, c) => sum + c.progress, 0) / clients.length) : 0, [clients]);
@@ -88,6 +89,23 @@ const CoachDashboard = () => {
     if (tab === "clients") loadStrength();
   }, [tab, selectedClientId]);
 
+  const loadCalendarMonth = async (anchor: Date) => {
+    if (!isSupabaseConfigured || !clients.length) { setCalendarEntries(new Map()); return; }
+    setCalendarLoading(true);
+    try {
+      const rangeStart = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 21);
+      const rangeEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 2, 10);
+      const toIso = (d: Date) => d.toISOString().slice(0, 10);
+      const entries = await buildCalendarEntries(clients, workouts, toIso(rangeStart), toIso(rangeEnd));
+      setCalendarEntries(entries);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "Не удалось загрузить календарь");
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => { if (tab === "calendar") loadCalendarMonth(new Date()); }, [tab, clients.length, workouts.length]);
   useEffect(() => { if (tab === "messages" && isSupabaseConfigured) fetchCoachNotifications().then((next) => { updateMessages(next); setMessages(next); }).catch(() => {}); }, [tab]);
 
   const saveClients = (next: Client[]) => { updateClients(next); setClients(next); };
@@ -271,7 +289,7 @@ const CoachDashboard = () => {
       status: "Новая заявка",
       progress: 0,
       nextWorkout: "",
-      comment: `Опыт: ${application.duration || "—"}\nМешает: ${application.obstacle || "—"}\nГотовность: ${application.commitment || "—"}\nСтарт: ${application.start_timeline || application.startTimeline || "—"}\nИщет: ${application.looking_for || application.lookingFor || "—"}\nИнвестиции: ${application.ready_to_invest || application.readyToInvest || "—"}`,
+      comment: `Опыт: ${application.duration || "—"}\nМешает: ${application.obstacle || "—"}\nГотовность: ${application.commitment || "—"}\nСтарт: ${application.start_timeline || "—"}\nИщет: ${application.looking_for || "—"}\nИнвестиции: ${application.ready_to_invest || "—"}`,
       nutrition: "",
       assignedWorkoutId: workouts[0]?.id || "",
       weeklyPlan: {},
@@ -319,7 +337,7 @@ const CoachDashboard = () => {
     }
   };
 
-  const exit = () => { logout(); window.location.hash = "/"; };
+  const exit = async () => { await logout(); window.location.hash = "/"; };
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-[270px_1fr]" style={{ background: "var(--bg)" }}>
@@ -331,14 +349,14 @@ const CoachDashboard = () => {
             <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
             <button onClick={() => setMobileMenuOpen(false)} className="rounded-full px-4 py-2 glass">×</button>
           </div>
-          {[ ["overview", "Обзор"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
+          {[ ["overview", "Обзор"], ["calendar", "Календарь"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
           <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
         </aside>
       </div>}
 
       <aside className="hidden lg:block border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
-        {[ ["overview", "Обзор"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
+        {[ ["overview", "Обзор"], ["calendar", "Календарь"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
         <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
       </aside>
 
@@ -356,6 +374,8 @@ const CoachDashboard = () => {
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
 
+        {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="недельный план каждого клиента, спроецированный на даты"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <CoachCalendarDay date={date} entries={entries} onOpenClient={(clientId) => { setSelectedClientId(clientId); setTab("clients"); }} />} /></Panel>}
+
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
@@ -368,6 +388,26 @@ const CoachDashboard = () => {
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-3xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
       </section>
     </main>
+  );
+};
+
+const CoachCalendarDay = ({ date, entries, onOpenClient }: { date: string; entries: CalendarWorkoutEntry[]; onOpenClient: (clientId: string) => void }) => {
+  if (!entries.length) return <p style={{ color: "var(--ink-2)" }}>На {new Date(date).toLocaleDateString("ru-RU")} ни у кого тренировка не запланирована.</p>;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm mb-1" style={{ color: "var(--ink-3)" }}>{new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" })}</p>
+      {entries.map((entry) => (
+        <button key={`${entry.clientId}-${entry.workoutId}`} onClick={() => onOpenClient(entry.clientId)} className="w-full text-left app-card rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div>
+            <b>{entry.clientName}</b>
+            <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.title} • {entry.exerciseCount} упражнений</p>
+          </div>
+          <span className="rounded-full px-3 py-1 text-xs shrink-0" style={{ background: entry.completed ? "rgba(104,225,253,.16)" : "rgba(255,255,255,.08)", color: entry.completed ? "var(--accent)" : "var(--ink-3)" }}>
+            {entry.completed ? "Выполнено" : "Запланировано"}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 };
 
@@ -410,9 +450,9 @@ const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteAppli
             <p><b style={{ color: "var(--ink)" }}>Опыт:</b> {application.duration || "—"}</p>
             <p><b style={{ color: "var(--ink)" }}>Мешает:</b> {application.obstacle || "—"}</p>
             <p><b style={{ color: "var(--ink)" }}>Готовность:</b> {application.commitment || "—"}</p>
-            <p><b style={{ color: "var(--ink)" }}>Когда старт:</b> {application.start_timeline || application.startTimeline || "—"}</p>
-            <p><b style={{ color: "var(--ink)" }}>Что ищет:</b> {application.looking_for || application.lookingFor || "—"}</p>
-            <p><b style={{ color: "var(--ink)" }}>Инвестиции:</b> {application.ready_to_invest || application.readyToInvest || "—"}</p>
+            <p><b style={{ color: "var(--ink)" }}>Когда старт:</b> {application.start_timeline || "—"}</p>
+            <p><b style={{ color: "var(--ink)" }}>Что ищет:</b> {application.looking_for || "—"}</p>
+            <p><b style={{ color: "var(--ink)" }}>Инвестиции:</b> {application.ready_to_invest || "—"}</p>
             <p><b style={{ color: "var(--ink)" }}>Instagram:</b> {application.instagram || "—"}</p>
           </div>
         </div>
@@ -863,6 +903,7 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
 const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: (settings: SiteSettings) => void }) => {
   const [draft, setDraft] = useState<SiteSettings>(settings);
   const [status, setStatus] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   useEffect(() => setDraft(settings), [settings]);
 
@@ -871,11 +912,23 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
     setStatus("");
   };
 
-  const uploadPhoto = (file: File | null) => {
+  const uploadPhoto = async (file: File | null) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => update({ photoDataUrl: String(reader.result || "") });
-    reader.readAsDataURL(file);
+    if (!isSupabaseConfigured) {
+      setStatus("Supabase не настроен — загрузка фото недоступна без подключённого проекта.");
+      return;
+    }
+    setIsUploadingPhoto(true);
+    setStatus("Загружаем фото...");
+    try {
+      const url = await uploadSitePhoto(file);
+      update({ photoDataUrl: url });
+      setStatus("Фото загружено. Не забудь нажать «Сохранить изменения».");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Не удалось загрузить фото");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const save = () => {
@@ -919,7 +972,8 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
           <div className="mt-4 aspect-[4/5] rounded-3xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
             {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center rounded-2xl" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
           </div>
-          <input type="file" accept="image/*" onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="mt-4 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+          <input type="file" accept="image/*" disabled={isUploadingPhoto} onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="mt-4 w-full rounded-xl px-4 py-3 disabled:opacity-50" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+          {isUploadingPhoto && <p className="mt-2 text-sm" style={{ color: "var(--accent)" }}>Загружаем...</p>}
           <button onClick={() => update({ photoDataUrl: "" })} className="mt-3 rounded-full px-5 py-3 app-card">Убрать фото</button>
         </div>
         <div className="app-card rounded-3xl p-4">

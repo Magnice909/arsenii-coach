@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 export type Role = "coach" | "client";
 
 export type User = {
@@ -91,7 +93,18 @@ export const getUser = (): User | null => {
   try { return JSON.parse(localStorage.getItem("arseniiCoachUser") || "null"); } catch { return null; }
 };
 export const setUser = (user: User) => localStorage.setItem("arseniiCoachUser", JSON.stringify(user));
-export const logout = () => localStorage.removeItem("arseniiCoachUser");
+
+/** Полный выход: чистит локальную метку роли и закрывает реальную сессию Supabase.
+ *  Раньше logout() трогал только localStorage, и Supabase JWT-сессия оставалась
+ *  активной в фоне после нажатия «Выйти» — это было дырой на общих устройствах. */
+export const logout = async () => {
+  localStorage.removeItem("arseniiCoachUser");
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // если Supabase недоступен/не настроен — локальный выход всё равно произошёл
+  }
+};
 
 export const getClients = (): Client[] => JSON.parse(localStorage.getItem("arseniiCoachClients") || JSON.stringify(defaultClients));
 export const setClients = (clients: Client[]) => localStorage.setItem("arseniiCoachClients", JSON.stringify(clients));

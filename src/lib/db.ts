@@ -297,6 +297,24 @@ export const saveSiteSettingsDb = async (settings: SiteSettings) => {
   if (error) throw error;
 };
 
+/** Загружает фото в Supabase Storage и возвращает публичный URL.
+ *  Раньше фото грузилось как base64 прямо в текстовую колонку БД —
+ *  несколько мегабайт текста на каждую загрузку лендинга кем угодно.
+ *  Теперь в базе хранится только короткая ссылка. */
+export const uploadSitePhoto = async (file: File): Promise<string> => {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `hero-photo-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("site-assets")
+    .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from("site-assets").getPublicUrl(path);
+  return data.publicUrl;
+};
+
 export const fetchCoachNotifications = async (): Promise<Message[]> => {
   const { data, error } = await supabase.from("notifications").select("*").is("read_at", null).order("created_at", { ascending: false }).limit(30);
   if (error) throw error;

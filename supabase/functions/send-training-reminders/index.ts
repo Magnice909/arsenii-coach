@@ -29,6 +29,16 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Эта функция предназначена только для вызова по расписанию (Supabase Cron),
+    // который аутентифицируется service role key. Раньше любой человек мог вызвать
+    // её URL напрямую и разослать произвольные push-уведомления всем клиентам.
+    const authHeader = req.headers.get("Authorization") || "";
+    const incomingToken = authHeader.replace(/^Bearer\s+/i, "");
+    if (incomingToken !== serviceRoleKey) {
+      return new Response(JSON.stringify({ error: "Эта функция вызывается только по расписанию" }), { status: 401, headers: corsHeaders });
+    }
+
     webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:admin@arseniicoach.ru", vapidPublic, vapidPrivate);
 
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -79,6 +89,16 @@ Deno.serve(async (req) => {
       });
       return webpush.sendNotification(item.subscription, payload);
     }));
+
+    const staleUserIds = (subscriptions || [])
+      .filter((_: any, index: number) => {
+        const result = results[index];
+        return result.status === "rejected" && [404, 410].includes((result.reason as { statusCode?: number })?.statusCode ?? 0);
+      })
+      .map((item: any) => item.user_id);
+    if (staleUserIds.length) {
+      await supabase.from("push_subscriptions").delete().in("user_id", staleUserIds);
+    }
 
     return new Response(JSON.stringify({ sent: results.filter((item) => item.status === "fulfilled").length, day: tomorrowDay }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {

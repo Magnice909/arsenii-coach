@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
 import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, getCompletionForToday, getDayWorkout, markWorkoutCompleted, weekDays } from "../lib/db";
-import { Client, getUser, logout, Workout } from "../lib/storage";
+import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
+import CalendarView from "../components/CalendarView";
+import { buildCalendarEntries, CalendarWorkoutEntry } from "../lib/calendar";
 
 const ClientDashboard = () => {
   const user = getUser();
@@ -16,6 +18,8 @@ const ClientDashboard = () => {
   const [history, setHistory] = useState<CompletionHistoryItem[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
   const [pushStatus, setPushStatus] = useState("");
+  const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
+  const [calendarLoading, setCalendarLoading] = useState(false);
 
   const todayName = weekDays[(new Date().getDay() + 6) % 7];
   const todayPlanId = client?.weeklyPlan?.[todayName];
@@ -41,6 +45,24 @@ const ClientDashboard = () => {
     if (!client?.id || !workout?.id) return;
     getCompletionForToday(client.id, workout.id, todayName).then(setCompletedToday).catch(() => setCompletedToday(false));
   }, [client?.id, workout?.id, todayName]);
+
+  const loadCalendarMonth = async (anchor: Date) => {
+    if (!isSupabaseConfigured || !client) { setCalendarEntries(new Map()); return; }
+    setCalendarLoading(true);
+    try {
+      const rangeStart = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 21);
+      const rangeEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 2, 10);
+      const toIso = (d: Date) => d.toISOString().slice(0, 10);
+      const entries = await buildCalendarEntries([client], workouts, toIso(rangeStart), toIso(rangeEnd));
+      setCalendarEntries(entries);
+    } catch {
+      setCalendarEntries(new Map());
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => { if (tab === "calendar" && client) loadCalendarMonth(new Date()); }, [tab, client?.id, workouts.length]);
 
   useEffect(() => {
     const load = async () => {
@@ -79,7 +101,8 @@ const ClientDashboard = () => {
     }
   };
 
-  const exit = () => { logout(); window.location.hash = "/"; };
+
+  const exit = async () => { await logout(); window.location.hash = "/"; };
 
   if (loading) {
     return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Загружаем план...</h1></section></main>;
@@ -117,14 +140,14 @@ const ClientDashboard = () => {
             <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
             <button onClick={() => setMobileMenuOpen(false)} className="rounded-full px-4 py-2 glass">×</button>
           </div>
-          {[ ["today", "Сегодня"], ["plan", "Мой план"], ["history", "История"], ["progress", "Прогресс"], ["nutrition", "Питание"], ["chat", "Связь"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
+          {[ ["today", "Сегодня"], ["calendar", "Календарь"], ["plan", "Мой план"], ["history", "История"], ["progress", "Прогресс"], ["nutrition", "Питание"], ["chat", "Связь"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
           <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
         </aside>
       </div>}
 
       <aside className="hidden lg:block border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
-        {[ ["today", "Сегодня"], ["plan", "Мой план"], ["history", "История"], ["progress", "Прогресс"], ["nutrition", "Питание"], ["chat", "Связь"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
+        {[ ["today", "Сегодня"], ["calendar", "Календарь"], ["plan", "Мой план"], ["history", "История"], ["progress", "Прогресс"], ["nutrition", "Питание"], ["chat", "Связь"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
         <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
       </aside>
 
@@ -135,7 +158,8 @@ const ClientDashboard = () => {
 
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={e} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
+        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
+        {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
                 {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
@@ -171,7 +195,7 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
           <p className="text-sm" style={{ color: "var(--ink-3)" }}>{new Date(item.completedDate).toLocaleDateString("ru-RU")} • {item.dayOfWeek}</p>
           <b className="text-xl mt-2 block">{item.dayWorkoutTitle}</b>
           <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{item.workoutTitle} • {item.exerciseCount} упражнений</p>
-          {!!item.exercises.length && <ul className="mt-3 space-y-2">{item.exercises.map((exercise) => <li key={exercise} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)", color: "var(--ink-2)" }}>{exercise}</li>)}</ul>}
+          {!!item.exercises.length && <ul className="mt-3 space-y-2">{item.exercises.map((exercise, index) => <li key={`${index}-${exercise}`} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)", color: "var(--ink-2)" }}>{exercise}</li>)}</ul>}
         </div>
       ))}
     </div>
@@ -187,7 +211,7 @@ const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, s
 const muscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Руки", "Кор", "Другое"];
 
 const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client: Client; userId: string; workouts: Workout[]; records: StrengthRecord[]; onAdd: (record: StrengthRecord) => void }) => {
-  const exerciseOptions = Array.from(new Set(workouts.flatMap((workout) => Object.values(workout.weeklyTemplate || {}).flatMap((day) => day.exercises || [])))).filter(Boolean);
+  const exerciseOptions = Array.from(new Set(workouts.flatMap((workout) => Object.values(workout.weeklyTemplate || {}) as DayWorkout[]).flatMap((day) => day.exercises || []))).filter(Boolean);
   const [muscleGroup, setMuscleGroup] = useState(muscleGroups[0]);
   const [exerciseName, setExerciseName] = useState(exerciseOptions[0] || "");
   const [maxWeight, setMaxWeight] = useState("");
@@ -288,6 +312,26 @@ const StrengthChart = ({ records }: { records: StrengthRecord[] }) => {
         {points.map((point) => <g key={`${point.record.id}-${point.x}`}><circle cx={point.x} cy={point.y} r="6" fill="var(--accent)" /><text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="13" fill="white">{point.record.maxWeight} кг</text></g>)}
       </svg>
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">{records.slice().reverse().map((record) => <div key={record.id} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)" }}><b>{record.exerciseName}</b><p className="text-sm" style={{ color: "var(--ink-2)" }}>{record.muscleGroup} • {record.maxWeight} кг • {new Date(record.recordedDate).toLocaleDateString("ru-RU")}</p></div>)}</div>
+    </div>
+  );
+};
+
+const ClientCalendarDay = ({ date, entries }: { date: string; entries: CalendarWorkoutEntry[] }) => {
+  if (!entries.length) return <p style={{ color: "var(--ink-2)" }}>На {new Date(date).toLocaleDateString("ru-RU")} тренировка не назначена — день отдыха.</p>;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm mb-1" style={{ color: "var(--ink-3)" }}>{new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" })}</p>
+      {entries.map((entry) => (
+        <div key={entry.workoutId} className="app-card rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div>
+            <b>{entry.title}</b>
+            <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.exerciseCount} упражнений</p>
+          </div>
+          <span className="rounded-full px-3 py-1 text-xs shrink-0" style={{ background: entry.completed ? "rgba(104,225,253,.16)" : "rgba(255,255,255,.08)", color: entry.completed ? "var(--accent)" : "var(--ink-3)" }}>
+            {entry.completed ? "Выполнено" : "Запланировано"}
+          </span>
+        </div>
+      ))}
     </div>
   );
 };

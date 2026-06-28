@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import IntroScreen from "../components/IntroScreen";
 import MultiStepForm from "../components/MultiStepForm";
 import ScrollReveal from "../components/ScrollReveal";
 import FloatingAppPreview from "../components/FloatingAppPreview";
 import { getSiteSettings } from "../lib/storage";
+import { fetchSiteSettingsDb } from "../lib/db";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 const features = [
   { icon: "◉", title: "Персональный план тренировок", desc: "Программа строится вокруг вашего графика, уровня и цели.", tag: "Training" },
@@ -15,9 +17,16 @@ const features = [
 
 const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
-  const [settings] = useState(getSiteSettings());
+  const [settings, setSettings] = useState(getSiteSettings());
   const handleIntroComplete = useCallback(() => setShowIntro(false), []);
   const scrollToApply = () => document.getElementById("apply")?.scrollIntoView({ behavior: "smooth" });
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    fetchSiteSettingsDb()
+      .then((remote) => { if (remote) setSettings(remote); })
+      .catch(() => { /* остаёмся на локальных дефолтах, если запрос не удался */ });
+  }, []);
 
   return (
     <>

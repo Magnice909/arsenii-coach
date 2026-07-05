@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
-import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, getCompletionForToday, getDayWorkout, markWorkoutCompleted, weekDays } from "../lib/db";
+import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 import CalendarView from "../components/CalendarView";
@@ -20,25 +20,44 @@ const ClientDashboard = () => {
   const [pushStatus, setPushStatus] = useState("");
   const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
+  const [periodLoading, setPeriodLoading] = useState(true);
+
+  useEffect(() => {
+    if (!client?.id) { setCurrentPeriod(null); setPeriodLoading(false); return; }
+    let cancelled = false;
+    setPeriodLoading(true);
+    fetchCurrentPlanPeriod(client.id)
+      .then((period) => { if (!cancelled) setCurrentPeriod(period); })
+      .catch(() => { if (!cancelled) setCurrentPeriod(null); })
+      .finally(() => { if (!cancelled) setPeriodLoading(false); });
+    return () => { cancelled = true; };
+  }, [client?.id]);
 
   const todayName = weekDays[(new Date().getDay() + 6) % 7];
-  const todayPlanId = client?.weeklyPlan?.[todayName];
-  const weeklyIds = Object.values(client?.weeklyPlan || {});
-  const workout = useMemo(() => workouts.find((w) => w.id === todayPlanId) || workouts.find((w) => w.id === weeklyIds[0]) || workouts.find((w) => w.id === client?.assignedWorkoutId) || workouts[0], [workouts, weeklyIds, client?.assignedWorkoutId, todayPlanId]);
-  const todayWorkout = todayPlanId ? getDayWorkout(workouts.find((w) => w.id === todayPlanId), todayName) : null;
+  // «Сегодня» теперь определяется активным 7-дневным периодом (currentPeriod),
+  // а не напрямую шаблоном client.weeklyPlan — иначе клиент видел бы тренировку
+  // по шаблону даже когда тренер ни разу не назначал на неё конкретные даты,
+  // или когда предыдущий период уже закончился и не продлён.
+  const workout = useMemo(() => workouts.find((w) => w.id === currentPeriod?.workoutId), [workouts, currentPeriod]);
+  const todayWorkout = currentPeriod ? getDayWorkout(workout, todayName) : null;
   const nextWorkoutLabel = (() => {
-    if (!client?.weeklyPlan) return "Не назначено";
+    if (periodLoading) return "Загрузка...";
+    if (!currentPeriod || !workout?.weeklyTemplate) return "План не назначен";
     const todayIndex = weekDays.indexOf(todayName);
+    const periodEnd = new Date(currentPeriod.endDate + "T00:00:00");
     for (let offset = 0; offset < 7; offset += 1) {
       if (offset === 0 && completedToday) continue;
+      const candidateDate = new Date();
+      candidateDate.setHours(0, 0, 0, 0);
+      candidateDate.setDate(candidateDate.getDate() + offset);
+      if (candidateDate > periodEnd) break; // не заглядываем за пределы активного периода
       const day = weekDays[(todayIndex + offset) % 7];
-      const planId = client.weeklyPlan[day];
-      if (!planId) continue;
-      const plan = workouts.find((item) => item.id === planId);
-      const dayWorkout = getDayWorkout(plan, day);
-      return `${day}: ${dayWorkout?.title || plan?.title || "Тренировка"}`;
+      const dayWorkout = getDayWorkout(workout, day);
+      if (!dayWorkout) continue;
+      return `${day}: ${dayWorkout.title}`;
     }
-    return "Не назначено";
+    return "В рамках текущего плана тренировок больше нет";
   })();
 
   useEffect(() => {
@@ -112,12 +131,12 @@ const ClientDashboard = () => {
     return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Ошибка загрузки</h1><p className="mt-3" style={{ color: "#ff8a98" }}>{error}</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
   }
 
-  if (!client || !workout) {
+  if (!client) {
     return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">План пока не назначен</h1><p className="mt-3" style={{ color: "var(--ink-2)" }}>Тренер ещё не назначил вам план тренировок в Supabase. Свяжитесь с тренером в Telegram.</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
   }
 
   const markDone = async () => {
-    if (completedToday) return;
+    if (completedToday || !workout) return;
     try {
       await markWorkoutCompleted(client.id, workout.id, todayName);
       setCompletedToday(true);
@@ -158,11 +177,11 @@ const ClientDashboard = () => {
 
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout.notes}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
+        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout?.notes || (periodLoading ? "Загрузка..." : "Тренер пока не назначил активный план на сегодня.")}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
-        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
+        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
-                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout.title} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
+                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
         {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a><div className="app-card rounded-3xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
       </section>
@@ -266,7 +285,7 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>{muscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<input list="strength-exercises" value={exerciseName} onChange={(event) => setExerciseName(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /><datalist id="strength-exercises">{exerciseOptions.map((exercise) => <option key={exercise} value={exercise} />)}</datalist></label>
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Максимальный вес, кг<input type="number" min="0" step="0.5" value={maxWeight} onChange={(event) => setMaxWeight(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)", boxSizing: "border-box", fontSize: "16px", WebkitAppearance: "none" }} /></label>
         </div>
         <button onClick={addRecord} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить показатель</button>
         {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}

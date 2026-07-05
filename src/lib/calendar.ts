@@ -1,5 +1,5 @@
 import { Client, Workout } from "./storage";
-import { getDayWorkout } from "./db";
+import { getDayWorkout, fetchPlanPeriodsInRange, PlanPeriod } from "./db";
 import { supabase } from "./supabase";
 
 /** Русские названия дней недели, индекс совпадает с JS Date.getDay() (0 = воскресенье). */
@@ -45,10 +45,14 @@ export type CalendarWorkoutEntry = {
   completed: boolean;
 };
 
-/** Для каждой даты в диапазоне проецирует недельный шаблон каждого клиента
- *  на день недели этой даты, и помечает выполнено/не выполнено по данным
- *  workout_completions. Используется и в кабинете тренера (все клиенты),
- *  и в кабинете клиента (один клиент) — отсюда параметр clients как массив. */
+const findPeriodForDate = (periods: PlanPeriod[], clientId: string, iso: string): PlanPeriod | undefined =>
+  periods.find((period) => period.clientId === clientId && period.startDate <= iso && iso <= period.endDate);
+
+/** Для каждой даты в диапазоне определяет, есть ли у клиента активный
+ *  7-дневный план на эту дату (plan_periods), и если есть — какой день
+ *  недельного шаблона ей соответствует. Дата вне любого периода клиента
+ *  считается пустой (план ещё не назначен на это время), а не "отдыхом
+ *  по шаблону" — план больше не проецируется бессрочно во все стороны. */
 export const buildCalendarEntries = async (
   clients: Client[],
   workouts: Workout[],
@@ -59,17 +63,21 @@ export const buildCalendarEntries = async (
   if (!clients.length) return result;
 
   const clientIds = clients.map((client) => client.id);
-  const { data: completionRows, error } = await supabase
-    .from("workout_completions")
-    .select("client_id, day_of_week, workout_id, completed_date")
-    .in("client_id", clientIds)
-    .gte("completed_date", rangeStart)
-    .lte("completed_date", rangeEnd);
 
-  if (error) throw error;
+  const [completionsResult, periods] = await Promise.all([
+    supabase
+      .from("workout_completions")
+      .select("client_id, day_of_week, workout_id, completed_date")
+      .in("client_id", clientIds)
+      .gte("completed_date", rangeStart)
+      .lte("completed_date", rangeEnd),
+    fetchPlanPeriodsInRange(clientIds, rangeStart, rangeEnd),
+  ]);
+
+  if (completionsResult.error) throw completionsResult.error;
 
   const completedSet = new Set(
-    (completionRows || []).map((row: any) => `${row.client_id}::${row.completed_date}::${row.workout_id}`)
+    (completionsResult.data || []).map((row: any) => `${row.client_id}::${row.completed_date}::${row.workout_id}`)
   );
 
   const start = new Date(rangeStart + "T00:00:00");
@@ -81,19 +89,20 @@ export const buildCalendarEntries = async (
     const entries: CalendarWorkoutEntry[] = [];
 
     for (const client of clients) {
-      const workoutId = client.weeklyPlan?.[dayName];
-      if (!workoutId) continue;
-      const workout = workouts.find((item) => item.id === workoutId);
+      const period = findPeriodForDate(periods, client.id, iso);
+      if (!period) continue;
+
+      const workout = workouts.find((item) => item.id === period.workoutId);
       const dayWorkout = getDayWorkout(workout, dayName);
       if (!dayWorkout) continue;
 
       entries.push({
         clientId: client.id,
         clientName: client.name,
-        workoutId,
+        workoutId: period.workoutId,
         title: dayWorkout.title,
         exerciseCount: dayWorkout.exercises?.length || 0,
-        completed: completedSet.has(`${client.id}::${iso}::${workoutId}`),
+        completed: completedSet.has(`${client.id}::${iso}::${period.workoutId}`),
       });
     }
 
@@ -102,3 +111,4 @@ export const buildCalendarEntries = async (
 
   return result;
 };
+

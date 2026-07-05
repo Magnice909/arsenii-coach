@@ -489,3 +489,90 @@ export const fetchCoachClientStrengthRecords = async (clientId: string): Promise
   if (error) throw error;
   return (data || []).map(dbStrengthRecordToRecord);
 };
+
+// ============================================================
+// Планы на 7-дневные периоды (plan_periods)
+// ============================================================
+
+export type PlanPeriod = {
+  id: string;
+  clientId: string;
+  workoutId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;
+};
+
+const dbPlanPeriodToPeriod = (row: any): PlanPeriod => ({
+  id: row.id,
+  clientId: row.client_id,
+  workoutId: row.workout_id,
+  startDate: row.start_date,
+  endDate: row.end_date,
+});
+
+const addDaysToISO = (iso: string, days: number): string => {
+  const date = new Date(iso + "T00:00:00");
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+/** Создаёт новый 7-дневный план, начинающийся с указанной даты.
+ *  end_date всегда start_date + 6 — это проверяется и на уровне БД (CHECK). */
+export const createPlanPeriod = async (clientId: string, workoutId: string, startDate: string): Promise<PlanPeriod> => {
+  const { data, error } = await supabase
+    .from("plan_periods")
+    .insert({ client_id: clientId, workout_id: workoutId, start_date: startDate, end_date: addDaysToISO(startDate, 6) })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return dbPlanPeriodToPeriod(data);
+};
+
+/** «Продлить» — создаёт следующий 7-дневный период сразу после последнего
+ *  существующего периода клиента (или с сегодня, если периодов ещё нет),
+ *  с тем же шаблоном тренировок. */
+export const extendClientPlan = async (clientId: string, workoutId: string): Promise<PlanPeriod> => {
+  const { data: lastPeriod, error: lastError } = await supabase
+    .from("plan_periods")
+    .select("end_date")
+    .eq("client_id", clientId)
+    .order("end_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastError) throw lastError;
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const nextStart = lastPeriod?.end_date ? addDaysToISO(lastPeriod.end_date, 1) : todayIso;
+  return createPlanPeriod(clientId, workoutId, nextStart);
+};
+
+/** Текущий активный план клиента — период, в диапазон которого попадает
+ *  сегодняшняя дата. Переход на новый период происходит автоматически:
+ *  просто меняется результат этого запроса, без какого-либо ручного действия. */
+export const fetchCurrentPlanPeriod = async (clientId: string): Promise<PlanPeriod | null> => {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("plan_periods")
+    .select("*")
+    .eq("client_id", clientId)
+    .lte("start_date", todayIso)
+    .gte("end_date", todayIso)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? dbPlanPeriodToPeriod(data) : null;
+};
+
+/** Все периоды клиента, пересекающиеся с диапазоном дат — для построения
+ *  календаря (тренер видит и прошлые, и будущие назначенные периоды). */
+export const fetchPlanPeriodsInRange = async (clientIds: string[], rangeStart: string, rangeEnd: string): Promise<PlanPeriod[]> => {
+  if (!clientIds.length) return [];
+  const { data, error } = await supabase
+    .from("plan_periods")
+    .select("*")
+    .in("client_id", clientIds)
+    .lte("start_date", rangeEnd)
+    .gte("end_date", rangeStart);
+  if (error) throw error;
+  return (data || []).map(dbPlanPeriodToPeriod);
+};
+

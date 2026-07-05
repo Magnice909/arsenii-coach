@@ -3,7 +3,7 @@ import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan } from "../lib/db";
 import CalendarView from "../components/CalendarView";
 import { buildCalendarEntries, CalendarWorkoutEntry } from "../lib/calendar";
 
@@ -482,7 +482,7 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
   </div>
 );
 
-const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
+const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)", boxSizing: "border-box", fontSize: "16px" }} /></label>;
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
 const ReadOnlyInput = ({ label, value }: { label: string; value: string }) => <Field label={label} value={value} onChange={() => {}} />;
 
@@ -492,8 +492,12 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [showClientPassword, setShowClientPassword] = useState(false);
   const [assignedPlanDraft, setAssignedPlanDraft] = useState(client.assignedWorkoutId || "");
-  const [nextPlanDraft, setNextPlanDraft] = useState(client.nextPlanId || "");
-  const [nextPlanDateDraft, setNextPlanDateDraft] = useState(client.nextPlanWeekStart || "");
+  const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
+  const [periodLoading, setPeriodLoading] = useState(true);
+  const [newPlanWorkoutId, setNewPlanWorkoutId] = useState(workouts[0]?.id || "");
+  const [newPlanStartDate, setNewPlanStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [planActionStatus, setPlanActionStatus] = useState("");
+  const [isSavingPeriod, setIsSavingPeriod] = useState(false);
 
   const buildPassword = () => {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
@@ -504,9 +508,17 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
 
   useEffect(() => {
     setAssignedPlanDraft(client.assignedWorkoutId || "");
-    setNextPlanDraft(client.nextPlanId || "");
-    setNextPlanDateDraft(client.nextPlanWeekStart || "");
-  }, [client.id, client.assignedWorkoutId, client.nextPlanId, client.nextPlanWeekStart]);
+  }, [client.id, client.assignedWorkoutId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPeriodLoading(true);
+    fetchCurrentPlanPeriod(client.id)
+      .then((period) => { if (!cancelled) setCurrentPeriod(period); })
+      .catch(() => { if (!cancelled) setCurrentPeriod(null); })
+      .finally(() => { if (!cancelled) setPeriodLoading(false); });
+    return () => { cancelled = true; };
+  }, [client.id]);
 
   useEffect(() => {
     const savedPassword = sessionStorage.getItem(passwordStorageKey(client.id)) || "";
@@ -530,23 +542,40 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
     }
   }, [client.id]);
 
-  const nextMonday = () => {
-    const date = new Date();
-    const day = (date.getDay() + 6) % 7;
-    date.setDate(date.getDate() - day + 7);
-    return date.toISOString().slice(0, 10);
-  };
-
-  const savePlanAssignment = () => {
+  const saveWeeklyTemplate = () => {
     const workout = workouts.find((item) => item.id === assignedPlanDraft);
     const weeklyPlan = workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, assignedPlanDraft])) : {};
-    onChange({
-      assignedWorkoutId: assignedPlanDraft,
-      weeklyPlan,
-      plan: workout?.title || "",
-      nextPlanId: nextPlanDraft || undefined,
-      nextPlanWeekStart: nextPlanDraft ? (nextPlanDateDraft || nextMonday()) : undefined,
-    });
+    onChange({ assignedWorkoutId: assignedPlanDraft, weeklyPlan, plan: workout?.title || "" });
+  };
+
+  const handleCreatePeriod = async () => {
+    setPlanActionStatus("");
+    if (!newPlanWorkoutId) { setPlanActionStatus("Выбери тренировку для плана"); return; }
+    setIsSavingPeriod(true);
+    try {
+      const period = await createPlanPeriod(client.id, newPlanWorkoutId, newPlanStartDate);
+      setPlanActionStatus(`План создан на ${period.startDate} – ${period.endDate}`);
+      setCurrentPeriod(await fetchCurrentPlanPeriod(client.id));
+    } catch (error) {
+      setPlanActionStatus(error instanceof Error ? error.message : "Не удалось создать план");
+    } finally {
+      setIsSavingPeriod(false);
+    }
+  };
+
+  const handleExtendPeriod = async () => {
+    if (!currentPeriod) return;
+    setPlanActionStatus("");
+    setIsSavingPeriod(true);
+    try {
+      const period = await extendClientPlan(client.id, currentPeriod.workoutId);
+      setPlanActionStatus(`План продлён: следующий период ${period.startDate} – ${period.endDate}`);
+      setCurrentPeriod(await fetchCurrentPlanPeriod(client.id));
+    } catch (error) {
+      setPlanActionStatus(error instanceof Error ? error.message : "Не удалось продлить план");
+    } finally {
+      setIsSavingPeriod(false);
+    }
   };
 
   const generatePassword = () => {
@@ -622,26 +651,51 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
       </div>
 
       <div className="app-card rounded-3xl p-4">
-        <h3 className="text-xl font-bold">Назначение плана</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери текущий план и, если нужно, план на следующую неделю. Изменения применятся после кнопки «Сохранить назначение».</p>
+        <h3 className="text-xl font-bold">Шаблон тренировок по дням недели</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Это «рецепт» плана — какая тренировка идёт в какой день недели. Сам план становится активным только когда ты назначишь ему конкретную дату начала ниже.</p>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+          Шаблон тренировок
+          <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+            <option value="">План не выбран</option>
+            {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={saveWeeklyTemplate} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить шаблон</button>
+      </div>
+
+      <div className="app-card rounded-3xl p-4">
+        <h3 className="text-xl font-bold">Активный план (7 дней)</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>План действует ровно 7 дней с выбранной даты. По окончании недели календарь автоматически перестаёт его показывать — никаких ручных переключений не нужно.</p>
+
+        {periodLoading ? (
+          <p className="text-sm" style={{ color: "var(--ink-3)" }}>Загружаем текущий план...</p>
+        ) : currentPeriod ? (
+          <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(104,225,253,.08)", border: "1px solid rgba(104,225,253,.22)" }}>
+            <p className="text-sm" style={{ color: "var(--ink-2)" }}>Сейчас активен план</p>
+            <b className="text-lg block mt-1">{workouts.find((w) => w.id === currentPeriod.workoutId)?.title || "Тренировка"}</b>
+            <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{currentPeriod.startDate} – {currentPeriod.endDate}</p>
+            <button type="button" onClick={handleExtendPeriod} disabled={isSavingPeriod} className="mt-3 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+              {isSavingPeriod ? "Продлеваем..." : "Продлить ещё на 7 дней"}
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>На сегодня у клиента нет активного плана.</p>
+        )}
+
+        <p className="text-sm font-semibold mb-2" style={{ color: "var(--ink-2)" }}>Назначить новый план</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-            Текущий план
-            <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
-              <option value="">План не выбран</option>
+            Тренировка
+            <select value={newPlanWorkoutId} onChange={(e) => setNewPlanWorkoutId(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
               {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
             </select>
           </label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-            План на следующую неделю
-            <select value={nextPlanDraft} onChange={(e) => { setNextPlanDraft(e.target.value); if (e.target.value && !nextPlanDateDraft) setNextPlanDateDraft(nextMonday()); }} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
-              <option value="">Не назначать заранее</option>
-              {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
-            </select>
-          </label>
-          <Field label="Дата начала следующего плана" type="date" value={nextPlanDateDraft} onChange={setNextPlanDateDraft} />
+          <Field label="Дата начала (план будет на 7 дней от неё)" type="date" value={newPlanStartDate} onChange={setNewPlanStartDate} />
         </div>
-        <button type="button" onClick={savePlanAssignment} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить назначение</button>
+        <button type="button" onClick={handleCreatePeriod} disabled={isSavingPeriod} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+          {isSavingPeriod ? "Создаём..." : "Назначить план на 7 дней"}
+        </button>
+        {planActionStatus && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{planActionStatus}</p>}
       </div>
       <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />

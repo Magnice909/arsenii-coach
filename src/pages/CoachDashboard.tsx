@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
+import { Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -844,9 +844,8 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
     setStatus("");
   };
 
-  const addTrainingDay = () => {
-    const day = availableDays[0];
-    if (!day) return;
+  const addTrainingDay = (day: string) => {
+    if (!day || usedDays.includes(day)) return;
     setDraft({
       ...draft,
       weeklyTemplate: {
@@ -905,14 +904,19 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
       <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
 
       <div className="app-card rounded-2xl p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <div>
-            <h3 className="text-xl font-bold">Тренировочные дни</h3>
-            <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>Добавляй только те дни, когда у клиента есть тренировка. Дни отдыха не создаются.</p>
-          </div>
-          <button disabled={!availableDays.length} type="button" onClick={addTrainingDay} className="btn btn-primary btn-md"><Plus size={16} /> Добавить день</button>
+        <h3 className="text-xl font-bold">Тренировочные дни</h3>
+        <p className="text-sm mt-1 mb-3" style={{ color: "var(--ink-3)" }}>Нажми на нужный день, чтобы добавить в него тренировку. Дни отдыха не создаются.</p>
+        <div className="flex flex-wrap gap-2 mb-1">
+          {weekDays.map((day) => {
+            const used = usedDays.includes(day);
+            return (
+              <button key={day} type="button" disabled={used} onClick={() => addTrainingDay(day)} className={used ? "badge badge-accent cursor-default" : "btn btn-secondary btn-sm glass"}>
+                {used && <Check size={13} />} {day}
+              </button>
+            );
+          })}
         </div>
-        {!usedDays.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>В плане пока нет тренировочных дней. Нажми «Добавить день».</p>}
+        {!usedDays.length && <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>В плане пока нет тренировочных дней. Нажми на день недели выше.</p>}
         <div className="space-y-5">
           {usedDays.sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b)).map((day) => {
             const dayWorkout = draft.weeklyTemplate?.[day] || { title: "Новая тренировка", focus: "", notes: "", exercises: [] };

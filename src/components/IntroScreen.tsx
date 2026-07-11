@@ -20,7 +20,7 @@ const IntroScreen = ({ onComplete }: { onComplete: () => void }) => {
           {phase === "brand" && (
             <motion.div key="brand" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
               <div className="mx-auto mb-6 logo-mark scale-125" />
-              <div className="text-4xl md:text-6xl font-extrabold tracking-[-.02em]">ARSENIICOACH</div>
+              <div className="holo-text text-4xl md:text-6xl font-extrabold tracking-[-.02em]">ARSENIICOACH</div>
               <div className="eyebrow mt-4">Онлайн фитнес-коучинг</div>
             </motion.div>
           )}

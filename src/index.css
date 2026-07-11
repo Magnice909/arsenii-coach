@@ -62,12 +62,48 @@
   mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 100%);
 }
 .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-3); }
-.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: conic-gradient(from 220deg, var(--accent), var(--secondary-accent), var(--accent)); position: relative; box-shadow: 0 0 24px rgba(104,225,253,0.30); flex-shrink: 0; }
+
+@property --logo-angle { syntax: '<angle>'; inherits: false; initial-value: 220deg; }
+@keyframes logo-spin { to { --logo-angle: 580deg; } }
+.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: conic-gradient(from var(--logo-angle), var(--accent), var(--secondary-accent), var(--accent)); position: relative; box-shadow: 0 0 24px rgba(104,225,253,0.30); flex-shrink: 0; animation: logo-spin 7s linear infinite; }
 .logo-mark::after { content: ""; position: absolute; inset: 7px; border-radius: 3px; background: var(--bg); }
+
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(104,225,253,.55); } 70% { box-shadow: 0 0 0 14px rgba(104,225,253,0); } 100% { box-shadow: 0 0 0 0 rgba(104,225,253,0); } }
 .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(104,225,253,.6); animation: pulse 2s infinite; }
 .glass { background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035)); border: 1px solid var(--line); box-shadow: 0 24px 90px rgba(0,0,0,.35); }
 .app-card { background: rgba(255,255,255,.05); border: 1px solid var(--line); transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
+
+/* Голографическая карточка: лёгкий 3D-наклон + переливающийся блик за курсором.
+   Управляется CSS-переменными, которые HoloCard проставляет напрямую на DOM-узел
+   в onMouseMove — без ре-рендера React на каждый кадр. */
+.holo-card { --holo-x: 50%; --holo-y: 50%; --holo-rx: 0deg; --holo-ry: 0deg; --holo-opacity: 0; position: relative; overflow: hidden; transform: perspective(900px) rotateX(var(--holo-rx)) rotateY(var(--holo-ry)) translateZ(0); transition: transform .35s cubic-bezier(.22,1,.36,1); }
+.holo-card-sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 5; opacity: var(--holo-opacity); transition: opacity .4s ease; mix-blend-mode: screen; background: radial-gradient(circle at var(--holo-x) var(--holo-y), rgba(255,255,255,.20), transparent 42%), conic-gradient(from 140deg at var(--holo-x) var(--holo-y), rgba(104,225,253,.4), rgba(139,92,246,.4), rgba(255,138,216,.32), rgba(104,225,253,.4)); filter: saturate(1.4); }
+.holo-card-content { position: relative; z-index: 1; height: 100%; }
+
+/* Блик, пробегающий по кнопке при наведении. */
+.btn-shine { position: relative; overflow: hidden; }
+.btn-shine::after { content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(120deg, transparent, rgba(255,255,255,.65), transparent); transform: skewX(-20deg); transition: left .65s ease; pointer-events: none; }
+.btn-shine:hover::after { left: 130%; }
+
+/* Медленно дрейфующие цветовые пятна фона — вместо статичных кругов. */
+@keyframes aurora-drift-a { 0%, 100% { transform: translate(-50%, 0) scale(1); } 50% { transform: translate(-46%, 34px) scale(1.1); } }
+@keyframes aurora-drift-b { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-28px, 30px) scale(1.06); } }
+@keyframes aurora-drift-c { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(24px, -26px) scale(1.08); } }
+.aurora-a { animation: aurora-drift-a 16s ease-in-out infinite; }
+.aurora-b { animation: aurora-drift-b 13s ease-in-out infinite; }
+.aurora-c { animation: aurora-drift-c 19s ease-in-out infinite; }
+
+/* Переливающийся градиентный текст для акцентных заголовков. Голубой (основной
+   акцент бренда) держит большую часть цикла, фиолетовый и розовый — короткие
+   вспышки на переходах, а не доминирующий цвет. */
+@keyframes holo-text-sweep { to { background-position: 260% 0; } }
+.holo-text { background: linear-gradient(110deg, var(--accent) 0%, var(--accent) 20%, var(--secondary-accent) 38%, #ff8ad8 46%, var(--secondary-accent) 54%, var(--accent) 72%, var(--accent) 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: holo-text-sweep 6s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-mark, .aurora-a, .aurora-b, .aurora-c, .holo-text { animation: none !important; }
+  .holo-card { transition: none !important; }
+  .btn-shine::after { transition: none !important; }
+}
 
 /* Единая кнопочная система: раньше в кабинетах у каждой кнопки был свой
    inline-style с чуть разными паддингами/цветами. Теперь один набор классов

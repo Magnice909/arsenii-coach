@@ -4,6 +4,7 @@ import IntroScreen from "../components/IntroScreen";
 import MultiStepForm from "../components/MultiStepForm";
 import ScrollReveal from "../components/ScrollReveal";
 import FloatingAppPreview from "../components/FloatingAppPreview";
+import HoloCard from "../components/HoloCard";
 import { getSiteSettings } from "../lib/storage";
 import { fetchSiteSettingsDb } from "../lib/db";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -33,8 +34,9 @@ const Index = () => {
       <AnimatePresence>{showIntro && <IntroScreen onComplete={handleIntroComplete} />}</AnimatePresence>
       <div className="min-h-screen relative overflow-hidden" style={{ background: "var(--bg)" }}>
         <div className="grid-overlay fixed inset-0 opacity-60 pointer-events-none" />
-        <div className="fixed -top-44 left-1/2 h-[560px] w-[560px] -translate-x-1/2 rounded-full blur-3xl pointer-events-none" style={{ background: "var(--accent-glow)" }} />
-        <div className="fixed top-1/3 -right-40 h-[430px] w-[430px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(139,92,246,.18)" }} />
+        <div className="aurora-a fixed -top-44 left-1/2 h-[560px] w-[560px] rounded-full blur-3xl pointer-events-none" style={{ background: "var(--accent-glow)" }} />
+        <div className="aurora-b fixed top-1/3 -right-40 h-[430px] w-[430px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(139,92,246,.18)" }} />
+        <div className="aurora-c fixed bottom-0 left-10 h-[380px] w-[380px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(255,138,216,.10)" }} />
 
         <header className="fixed top-5 left-1/2 z-40 w-[calc(100%-32px)] max-w-6xl -translate-x-1/2 glass rounded-full px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -44,7 +46,7 @@ const Index = () => {
             <nav className="hidden md:flex items-center gap-7 text-sm" style={{ color: "var(--ink-2)" }}>
               <a href="#included">Что входит</a><a href="#approach">Подход</a><a href="#results">Результаты</a>
             </nav>
-            <div className="flex items-center gap-2"><button onClick={() => window.location.hash = "/login"} className="inline-flex rounded-full px-4 sm:px-5 py-2.5 text-sm font-semibold glass">Войти</button><button onClick={scrollToApply} className="rounded-full px-4 sm:px-5 py-2.5 text-sm font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button></div>
+            <div className="flex items-center gap-2"><button onClick={() => window.location.hash = "/login"} className="inline-flex rounded-full px-4 sm:px-5 py-2.5 text-sm font-semibold glass">Войти</button><button onClick={scrollToApply} className="btn-shine rounded-full px-4 sm:px-5 py-2.5 text-sm font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button></div>
           </div>
         </header>
 
@@ -54,14 +56,14 @@ const Index = () => {
               <motion.div className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm mb-7" style={{ borderColor: "var(--line)", color: "var(--ink-2)", background: "rgba(255,255,255,.04)" }} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
                 <span className="pulse-dot" /> {settings.heroBadge}
               </motion.div>
-              <motion.h1 className="text-6xl md:text-8xl font-extrabold leading-[.86] tracking-[-.035em] max-w-4xl" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .1 }}>
+              <motion.h1 className="holo-text text-6xl md:text-8xl font-extrabold leading-[.86] tracking-[-.035em] max-w-4xl" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .1 }}>
                 {settings.heroTitle}
               </motion.h1>
               <motion.p className="mt-7 max-w-2xl text-lg md:text-xl" style={{ color: "var(--ink-2)" }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .2 }}>
                 {settings.heroSubtitle}
               </motion.p>
               <motion.div className="mt-8 flex flex-wrap gap-3" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .3 }}>
-                <button onClick={scrollToApply} className="rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button>
+                <button onClick={scrollToApply} className="btn-shine rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button>
                 <a href="#included" className="rounded-full px-6 py-3 glass">Что входит</a>
               </motion.div>
               <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
@@ -73,9 +75,11 @@ const Index = () => {
 
           <section className="mx-auto mt-16 max-w-6xl px-4">
             <ScrollReveal>
-              <div className="glass rounded-[2rem] p-5 md:p-8 text-center text-xl md:text-3xl font-semibold tracking-[-.02em]">
-                “{settings.quote}”
-              </div>
+              <HoloCard className="glass rounded-[2rem]" intensity={4}>
+                <div className="p-5 md:p-8 text-center text-xl md:text-3xl font-semibold tracking-[-.02em]">
+                  “{settings.quote}”
+                </div>
+              </HoloCard>
             </ScrollReveal>
           </section>
 
@@ -87,12 +91,14 @@ const Index = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {features.map((f, i) => (
                 <ScrollReveal key={f.title} delay={i * .06}>
-                  <article className="glass rounded-[1.75rem] p-6 h-full transition-colors hover:border-[rgba(104,225,253,.34)]">
-                    <div className="text-3xl mb-10">{f.icon}</div>
-                    <h3 className="text-xl font-bold tracking-[-.02em]">{f.title}</h3>
-                    <p className="mt-3 text-sm" style={{ color: "var(--ink-2)" }}>{f.desc}</p>
-                    <div className="eyebrow mt-8">{f.tag}</div>
-                  </article>
+                  <HoloCard className="glass rounded-[1.75rem] h-full transition-colors hover:border-[rgba(104,225,253,.34)]">
+                    <article className="p-6 h-full">
+                      <div className="text-3xl mb-10">{f.icon}</div>
+                      <h3 className="text-xl font-bold tracking-[-.02em]">{f.title}</h3>
+                      <p className="mt-3 text-sm" style={{ color: "var(--ink-2)" }}>{f.desc}</p>
+                      <div className="eyebrow mt-8">{f.tag}</div>
+                    </article>
+                  </HoloCard>
                 </ScrollReveal>
               ))}
             </div>
@@ -100,10 +106,10 @@ const Index = () => {
 
           <section id="approach" className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-12 md:grid-cols-2 md:items-center">
             <ScrollReveal>
-              <div className="relative overflow-hidden rounded-[2rem] glass min-h-[500px]">
+              <HoloCard className="rounded-[2rem] glass min-h-[500px]" intensity={5}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
                 {settings.photoDataUrl ? <img src={settings.photoDataUrl} alt="Фото Арсения" className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
-              </div>
+              </HoloCard>
             </ScrollReveal>
             <ScrollReveal delay={0.1}>
               <div className="eyebrow">Подход</div>
@@ -119,7 +125,7 @@ const Index = () => {
               <div className="eyebrow">Система результата</div>
               <h2 className="mt-4 text-5xl md:text-7xl font-extrabold tracking-[-.02em]">Не просто план, а система контроля.</h2>
               <p className="mt-6 text-lg" style={{ color: "var(--ink-2)" }}>В формате ArseniiCoach клиент получает тренировки, питание, отчёты, приложение для отметок и регулярную связь. Тренер видит активность, может корректировать программу и держать человека в процессе.</p>
-              <button onClick={scrollToApply} className="mt-8 rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Заполнить анкету</button>
+              <button onClick={scrollToApply} className="btn-shine mt-8 rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Заполнить анкету</button>
             </ScrollReveal>
           </section>
         </main>
@@ -131,7 +137,7 @@ const Index = () => {
           </div>
         </footer>
 
-        <button onClick={scrollToApply} className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full px-6 py-3 font-semibold shadow-2xl md:hidden" style={{ background: "var(--accent)", color: "var(--bg)" }}>ОСТАВИТЬ ЗАЯВКУ</button>
+        <button onClick={scrollToApply} className="btn-shine fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full px-6 py-3 font-semibold shadow-2xl md:hidden" style={{ background: "var(--accent)", color: "var(--bg)" }}>ОСТАВИТЬ ЗАЯВКУ</button>
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Bell, CalendarDays, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Settings, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -29,6 +30,20 @@ const emptyClient = (workoutId: string): Client => ({
 });
 
 const emptyWorkout = (): Workout => ({ id: makeId(), title: "Новый недельный план", day: "Понедельник", focus: "", notes: "", exercises: [], weeklyTemplate: createEmptyWeeklyTemplate() });
+
+type NavItem = { id: string; label: string; icon: LucideIcon };
+const coachNavItems: NavItem[] = [
+  { id: "overview", label: "Обзор", icon: LayoutDashboard },
+  { id: "calendar", label: "Календарь", icon: CalendarDays },
+  { id: "applications", label: "Заявки", icon: Inbox },
+  { id: "clients", label: "Клиенты", icon: Users },
+  { id: "workouts", label: "Планы тренировок", icon: Dumbbell },
+  { id: "messages", label: "Сообщения", icon: Bell },
+  { id: "settings", label: "Настройки", icon: Settings },
+];
+// Вкладки в нижней панели на мобильном — самые частые действия тренера.
+// Остальные (и выход) остаются в полном меню за кнопкой «Ещё».
+const coachMobilePrimaryIds = ["overview", "calendar", "clients", "messages"];
 
 const CoachDashboard = () => {
   const user = getUser();
@@ -341,26 +356,41 @@ const CoachDashboard = () => {
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-[270px_1fr]" style={{ background: "var(--bg)" }}>
-      <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden fixed top-4 left-4 z-50 rounded-full px-4 py-3 glass font-semibold">Меню</button>
       {mobileMenuOpen && <div className="fixed inset-0 z-[80] lg:hidden">
         <button className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} aria-label="Закрыть меню" />
         <aside className="absolute left-0 top-0 h-full w-[82vw] max-w-[340px] p-5 overflow-y-auto" style={{ background: "#080c12", borderRight: "1px solid var(--line)" }}>
           <div className="flex items-center justify-between mb-8">
             <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
-            <button onClick={() => setMobileMenuOpen(false)} className="rounded-full px-4 py-2 glass">×</button>
+            <button onClick={() => setMobileMenuOpen(false)} className="rounded-full p-2 glass" aria-label="Закрыть меню"><X size={18} /></button>
           </div>
-          {[ ["overview", "Обзор"], ["calendar", "Календарь"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => { setTab(id); setMobileMenuOpen(false); }} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
-          <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
+          <NavList items={coachNavItems} activeTab={tab} messageCount={messages.length} onSelect={(id) => { setTab(id); setMobileMenuOpen(false); }} />
+          <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
         </aside>
       </div>}
 
-      <aside className="hidden lg:block border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
+      <aside className="hidden lg:flex lg:flex-col border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
-        {[ ["overview", "Обзор"], ["calendar", "Календарь"], ["applications", "Заявки"], ["clients", "Клиенты"], ["workouts", "Планы тренировок"], ["messages", "Сообщения"], ["settings", "Настройки"] ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="w-full text-left rounded-2xl px-4 py-3 mb-2" style={{ background: tab === id ? "rgba(104,225,253,.14)" : "transparent", color: tab === id ? "var(--ink)" : "var(--ink-3)", border: tab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>{label}</button>)}
-        <button onClick={exit} className="w-full text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}>Выйти</button>
+        <NavList items={coachNavItems} activeTab={tab} messageCount={messages.length} onSelect={setTab} />
+        <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
       </aside>
 
-      <section className="p-4 pt-20 md:p-8 relative overflow-hidden">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch pb-[env(safe-area-inset-bottom)]" style={{ background: "rgba(8,12,18,.92)", backdropFilter: "blur(14px)", borderTop: "1px solid var(--line)" }}>
+        {coachNavItems.filter((item) => coachMobilePrimaryIds.includes(item.id)).map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] relative">
+            <span className="relative">
+              <Icon size={20} strokeWidth={tab === id ? 2.4 : 1.8} color={tab === id ? "var(--accent)" : "var(--ink-3)"} />
+              {id === "messages" && messages.length > 0 && <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full" style={{ background: "#ff8a98" }} />}
+            </span>
+            <span style={{ color: tab === id ? "var(--accent)" : "var(--ink-3)" }}>{label}</span>
+          </button>
+        ))}
+        <button onClick={() => setMobileMenuOpen(true)} className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]">
+          <MoreHorizontal size={20} strokeWidth={1.8} color="var(--ink-3)" />
+          <span style={{ color: "var(--ink-3)" }}>Ещё</span>
+        </button>
+      </nav>
+
+      <section className="p-4 pt-6 pb-28 md:p-8 lg:pt-8 lg:pb-8 relative overflow-hidden">
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div><div className="eyebrow">Кабинет тренера</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || "Арсений"}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || "@president_h"}</p></div>
@@ -410,6 +440,18 @@ const CoachCalendarDay = ({ date, entries, onOpenClient }: { date: string; entri
     </div>
   );
 };
+
+const NavList = ({ items, activeTab, messageCount, onSelect }: { items: NavItem[]; activeTab: string; messageCount: number; onSelect: (id: string) => void }) => (
+  <div>
+    {items.map(({ id, label, icon: Icon }) => (
+      <button key={id} onClick={() => onSelect(id)} aria-current={activeTab === id ? "page" : undefined} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mb-2 transition-colors" style={{ background: activeTab === id ? "rgba(104,225,253,.14)" : "transparent", color: activeTab === id ? "var(--ink)" : "var(--ink-3)", border: activeTab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>
+        <Icon size={18} strokeWidth={activeTab === id ? 2.4 : 1.8} />
+        <span className="flex-1">{label}</span>
+        {id === "messages" && messageCount > 0 && <span className="rounded-full px-2 py-0.5 text-xs font-semibold shrink-0" style={{ background: "rgba(255,138,152,.18)", color: "#ff8a98" }}>{messageCount}</span>}
+      </button>
+    ))}
+  </div>
+);
 
 const Metric = ({ title, value, onClick, hint }: { title: string; value: string | number; onClick?: () => void; hint?: string }) => {
   const content = <><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-3xl mt-2 block">{value}</b>{hint && <span className="text-xs mt-2 block" style={{ color: "var(--accent)" }}>{hint}</span>}</>;

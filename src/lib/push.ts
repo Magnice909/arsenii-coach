@@ -18,7 +18,11 @@ export const enablePushNotifications = async (userId?: string) => {
   if (!publicVapidKey) throw new Error("Не задан VITE_VAPID_PUBLIC_KEY. Добавь VAPID public key в Vercel → Environment Variables и сделай Redeploy.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Разрешение на уведомления не выдано");
-  const registration = await navigator.serviceWorker.register("/sw.js");
+  // register() резолвится, как только SW зарегистрирован, но до того, как он
+  // станет active — subscribe() на этой стадии падает с "no active Service
+  // Worker". navigator.serviceWorker.ready ждёт именно активации.
+  await navigator.serviceWorker.register("/sw.js");
+  const registration = await navigator.serviceWorker.ready;
   const existing = await registration.pushManager.getSubscription();
   const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicVapidKey) });
   const subscriptionJson = subscription.toJSON();

@@ -11,7 +11,7 @@ import { isSupabaseConfigured } from "../lib/supabase";
 
 // WebGL-сцена — тяжёлая (three.js), грузим отдельным чанком отдельно от
 // остального лендинга, чтобы она не задерживала первую отрисовку страницы.
-const Holo3DGem = lazy(() => import("../components/Holo3DGem"));
+const Holo3DShowcase = lazy(() => import("../components/Holo3DShowcase"));
 
 const features = [
   { icon: "◉", title: "Персональный план тренировок", desc: "Программа строится вокруг вашего графика, уровня и цели.", tag: "Training" },
@@ -55,7 +55,7 @@ const Index = () => {
         </header>
 
         <main className="relative z-10 pt-32 md:pt-40">
-          <section className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 md:grid-cols-[1fr_430px] md:items-center 2xl:grid-cols-[1fr_240px_430px]">
+          <section className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 md:grid-cols-[1fr_430px] md:items-center">
             <div className="relative">
               <motion.div className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm mb-7" style={{ borderColor: "var(--line)", color: "var(--ink-2)", background: "rgba(255,255,255,.04)" }} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
                 <span className="pulse-dot" /> {settings.heroBadge}
@@ -70,18 +70,18 @@ const Index = () => {
                 <button onClick={scrollToApply} className="btn-shine rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button>
                 <a href="#included" className="rounded-full px-6 py-3 glass">Что входит</a>
               </motion.div>
-              <div className="mt-10 flex justify-center 2xl:hidden">
-                <Suspense fallback={null}><Holo3DGem /></Suspense>
-              </div>
-            </div>
-            {/* Отдельная колонка сетки для 2xl+, а не absolute-позиционирование
-                поверх заголовка: heroTitle редактируется тренером и может стать
-                длиннее — тогда абсолютный куб просто наехал бы на текст. Своя
-                колонка исключает наложение при любой длине текста. */}
-            <div className="hidden 2xl:flex items-center justify-center">
-              <Suspense fallback={null}><Holo3DGem /></Suspense>
             </div>
             <div id="apply"><MultiStepForm /></div>
+          </section>
+
+          {/* Крупная витринная 3D-сцена — отдельная полноширинная секция, а не
+              часть hero-сетки: так можно сделать её действительно большой,
+              не деля место с заголовком/формой и не рискуя наложением при
+              редактировании текста тренером. */}
+          <section className="mx-auto mt-6 md:mt-10 max-w-6xl px-4">
+            <div className="relative h-[320px] sm:h-[420px] md:h-[520px]">
+              <Suspense fallback={null}><Holo3DShowcase className="absolute inset-0" /></Suspense>
+            </div>
           </section>
 
           <section className="mx-auto mt-16 max-w-6xl px-4">

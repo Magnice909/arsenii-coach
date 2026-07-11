@@ -170,7 +170,14 @@ const ClientDashboard = () => {
       await markWorkoutCompleted(client.id, workout.id, todayName);
       setCompletedToday(true);
       if (user?.id) { const updated = await fetchClientData(user.id); if (updated) { setClient(updated.client); setWorkouts(updated.workouts); setHistory(await fetchClientCompletionHistory(updated.client.id, user.id)); setStrengthRecords(await fetchClientStrengthRecords(updated.client.id, user.id)); } }
-      if (client.coachId) await createNotification(client.coachId, "Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${todayWorkout?.title || workout.title}`, "/#/coach");
+      if (client.coachId) {
+        try {
+          await createNotification(client.coachId, "Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${todayWorkout?.title || workout.title}`, "/#/coach");
+        } catch {
+          // Тренировка уже отмечена выполненной — сбой отправки уведомления не должен
+          // превращать успешную отметку в сообщение об ошибке для клиента.
+        }
+      }
       sendCoachPush("Новая отметка тренировки", `${user?.name || client.name} выполнил тренировку ${todayWorkout?.title || workout.title}`);
       alert("Тренировка отмечена. Арсений увидит уведомление в кабинете тренера.");
     } catch {

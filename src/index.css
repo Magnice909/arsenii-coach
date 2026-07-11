@@ -99,31 +99,6 @@
 @keyframes holo-text-sweep { to { background-position: 260% 0; } }
 .holo-text { background: linear-gradient(110deg, var(--accent) 0%, var(--accent) 20%, var(--secondary-accent) 38%, #ff8ad8 46%, var(--secondary-accent) 54%, var(--accent) 72%, var(--accent) 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: holo-text-sweep 6s linear infinite; }
 
-/* Настоящий 3D-объект на чистом CSS: куб с гранями в пространстве
-   (transform-style: preserve-3d), а не плоская иконка с покачиванием.
-   Полупрозрачные грани — специально: сквозь них видно противоположную
-   грань, это и даёт эффект голограммы, а не твёрдого предмета. */
-.holo-cube-scene { position: relative; width: 176px; height: 176px; perspective: 1100px; animation: holo-cube-float 6s ease-in-out infinite; }
-.holo-cube-base { position: absolute; left: 50%; bottom: -14px; width: 130px; height: 26px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(ellipse, rgba(104,225,253,.35), transparent 72%); animation: holo-cube-base-pulse 6s ease-in-out infinite; }
-.holo-cube { position: absolute; inset: 0; transform-style: preserve-3d; animation: holo-cube-spin 14s linear infinite; }
-/* backface-visibility: hidden — без него сквозь переднюю грань было видно
-   зеркальный, нечитаемый текст противоположной грани (та светится сквозь
-   полупрозрачный фон и накладывается на текст лицевой), из-за чего куб
-   выглядел «сломанным». Так каждая грань пропадает, когда повёрнута от
-   камеры затылком, и остаётся только сама стеклянная панель. */
-.holo-cube-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; border-radius: 20px; background: linear-gradient(165deg, rgba(104,225,253,.22), rgba(139,92,246,.14)); border: 1px solid rgba(104,225,253,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 0 30px rgba(104,225,253,.18), 0 0 30px rgba(104,225,253,.16); backdrop-filter: blur(3px); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.holo-cube-face svg { filter: drop-shadow(0 0 6px rgba(104,225,253,.7)); color: var(--accent); }
-.holo-cube-face span { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
-.holo-cube-face--front { transform: rotateY(0deg) translateZ(88px); }
-.holo-cube-face--right { transform: rotateY(90deg) translateZ(88px); }
-.holo-cube-face--back { transform: rotateY(180deg) translateZ(88px); }
-.holo-cube-face--left { transform: rotateY(-90deg) translateZ(88px); }
-.holo-cube-face--top, .holo-cube-face--bottom { background: linear-gradient(165deg, rgba(104,225,253,.14), rgba(139,92,246,.08)); }
-.holo-cube-face--top { transform: rotateX(90deg) translateZ(88px); }
-.holo-cube-face--bottom { transform: rotateX(-90deg) translateZ(88px); }
-@keyframes holo-cube-spin { from { transform: rotateY(0deg) rotateX(-14deg); } to { transform: rotateY(360deg) rotateX(-14deg); } }
-@keyframes holo-cube-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
-@keyframes holo-cube-base-pulse { 0%, 100% { opacity: .55; transform: translateX(-50%) scale(1); } 50% { opacity: .9; transform: translateX(-50%) scale(1.15); } }
 
 /* Нижняя навигация в стиле «жидкого стекла» iOS: тонкий градиент + сильное
    размытие фона вместо плоской почти-непрозрачной заливки.
@@ -143,7 +118,7 @@
 .tabbar-glass-pill { position: absolute; inset: 4px 8px; border-radius: 16px; background: rgba(104,225,253,.12); border: 1px solid rgba(104,225,253,.22); }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-mark, .aurora-a, .aurora-b, .aurora-c, .holo-text, .holo-cube-scene, .holo-cube, .holo-cube-base { animation: none !important; }
+  .logo-mark, .aurora-a, .aurora-b, .aurora-c, .holo-text { animation: none !important; }
   .holo-card { transition: none !important; }
   .btn-shine::after { transition: none !important; }
 }

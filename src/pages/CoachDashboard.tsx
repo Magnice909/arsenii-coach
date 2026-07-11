@@ -990,8 +990,10 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
   const [draft, setDraft] = useState<SiteSettings>(settings);
   const [status, setStatus] = useState("");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => setDraft(settings), [settings]);
+  useEffect(() => { setPhotoFailed(false); }, [draft.photoDataUrl]);
 
   const update = (patch: Partial<SiteSettings>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -1056,7 +1058,7 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
           <h3 className="text-xl font-bold">Фото на главной</h3>
           <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать уже обрезанный вертикальный портрет 4:5 или 3:4.</p>
           <div className="mt-4 aspect-[4/5] rounded-2xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
-            {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
+            {draft.photoDataUrl && !photoFailed ? <img src={draft.photoDataUrl} alt="Фото на главной" onError={() => setPhotoFailed(true)} className="h-full w-full object-cover object-center" /> : <span style={{ color: "var(--ink-3)" }} className="px-4 text-center text-sm">{draft.photoDataUrl ? "Не удалось загрузить фото — ссылка недоступна. Попробуй загрузить заново." : "Фото не загружено"}</span>}
           </div>
           <input type="file" accept="image/*" disabled={isUploadingPhoto} onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="field-input mt-4 disabled:opacity-50" />
           {isUploadingPhoto && <p className="mt-2 text-sm" style={{ color: "var(--accent)" }}>Загружаем...</p>}

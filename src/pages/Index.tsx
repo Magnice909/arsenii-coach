@@ -23,6 +23,7 @@ const features = [
 const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
   const [settings, setSettings] = useState(getSiteSettings());
+  const [photoFailed, setPhotoFailed] = useState(false);
   const handleIntroComplete = useCallback(() => setShowIntro(false), []);
   const scrollToApply = () => document.getElementById("apply")?.scrollIntoView({ behavior: "smooth" });
 
@@ -32,6 +33,9 @@ const Index = () => {
       .then((remote) => { if (remote) setSettings(remote); })
       .catch(() => { /* остаёмся на локальных дефолтах, если запрос не удался */ });
   }, []);
+
+  // Сбрасываем флаг сбоя, если фото поменялось (например, тренер загрузил новое).
+  useEffect(() => { setPhotoFailed(false); }, [settings.photoDataUrl]);
 
   return (
     <>
@@ -119,7 +123,7 @@ const Index = () => {
             <ScrollReveal>
               <HoloCard className="rounded-[2rem] glass min-h-[500px]" intensity={5}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
-                {settings.photoDataUrl ? <img src={settings.photoDataUrl} alt="Фото Арсения" className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
+                {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
               </HoloCard>
             </ScrollReveal>
             <ScrollReveal delay={0.1}>

@@ -68,6 +68,8 @@ export type SiteSettings = {
   approachText1: string;
   approachText2: string;
   photoDataUrl: string;
+  introTagline: string;
+  introSlogan: string;
 };
 
 const defaultClients: Client[] = [];
@@ -85,6 +87,8 @@ const defaultSiteSettings: SiteSettings = {
   approachText1: "Большинство людей буксует не из-за отсутствия дисциплины, а из-за отсутствия структуры. Случайные тренировки, непонятное питание и короткие всплески мотивации не дают стабильного результата.",
   approachText2: "1:1 сопровождение убирает хаос: план под ваш график, понятные цели, регулярная обратная связь и контроль выполнения.",
   photoDataUrl: "",
+  introTagline: "Онлайн фитнес-коучинг",
+  introSlogan: "Структура. Контроль. Результат.",
 };
 
 export const makeId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;

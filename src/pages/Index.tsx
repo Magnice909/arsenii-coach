@@ -5,6 +5,7 @@ import MultiStepForm from "../components/MultiStepForm";
 import ScrollReveal from "../components/ScrollReveal";
 import FloatingAppPreview from "../components/FloatingAppPreview";
 import HoloCard from "../components/HoloCard";
+import HoloDumbbell from "../components/HoloDumbbell";
 import { getSiteSettings } from "../lib/storage";
 import { fetchSiteSettingsDb } from "../lib/db";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -31,7 +32,7 @@ const Index = () => {
 
   return (
     <>
-      <AnimatePresence>{showIntro && <IntroScreen onComplete={handleIntroComplete} />}</AnimatePresence>
+      <AnimatePresence>{showIntro && <IntroScreen onComplete={handleIntroComplete} brand={settings.brand} tagline={settings.introTagline} slogan={settings.introSlogan} />}</AnimatePresence>
       <div className="min-h-screen relative overflow-hidden" style={{ background: "var(--bg)" }}>
         <div className="grid-overlay fixed inset-0 opacity-60 pointer-events-none" />
         <div className="aurora-a fixed -top-44 left-1/2 h-[560px] w-[560px] rounded-full blur-3xl pointer-events-none" style={{ background: "var(--accent-glow)" }} />
@@ -52,7 +53,8 @@ const Index = () => {
 
         <main className="relative z-10 pt-32 md:pt-40">
           <section className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 md:grid-cols-[1fr_430px] md:items-center">
-            <div>
+            <div className="relative">
+              <HoloDumbbell className="hidden xl:block absolute -top-16 right-6 translate-x-1/4 opacity-90" />
               <motion.div className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm mb-7" style={{ borderColor: "var(--line)", color: "var(--ink-2)", background: "rgba(255,255,255,.04)" }} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
                 <span className="pulse-dot" /> {settings.heroBadge}
               </motion.div>

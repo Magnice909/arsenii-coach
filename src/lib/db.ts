@@ -324,6 +324,8 @@ export const fetchSiteSettingsDb = async (): Promise<SiteSettings | null> => {
     approachText1: data.approach_text_1 || "",
     approachText2: data.approach_text_2 || "",
     photoDataUrl: data.photo_url || "",
+    introTagline: data.intro_tagline || "Онлайн фитнес-коучинг",
+    introSlogan: data.intro_slogan || "Структура. Контроль. Результат.",
   };
 };
 
@@ -340,6 +342,8 @@ export const saveSiteSettingsDb = async (settings: SiteSettings) => {
     approach_text_1: settings.approachText1,
     approach_text_2: settings.approachText2,
     photo_url: settings.photoDataUrl,
+    intro_tagline: settings.introTagline,
+    intro_slogan: settings.introSlogan,
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;

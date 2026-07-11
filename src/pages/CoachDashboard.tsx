@@ -1049,6 +1049,14 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
           <button onClick={() => update({ photoDataUrl: "" })} className="btn btn-secondary btn-md mt-3">Убрать фото</button>
         </div>
         <div className="app-card rounded-2xl p-4">
+          <h3 className="text-xl font-bold">Заставка при загрузке</h3>
+          <p className="text-sm mt-2 mb-4" style={{ color: "var(--ink-3)" }}>Экран, который на пару секунд показывается перед главной страницей.</p>
+          <div className="space-y-3">
+            <Field label="Подпись под названием бренда" value={draft.introTagline} onChange={(introTagline) => update({ introTagline })} />
+            <Field label="Слоган на втором экране" value={draft.introSlogan} onChange={(introSlogan) => update({ introSlogan })} />
+          </div>
+        </div>
+        <div className="app-card rounded-2xl p-4">
           <h3 className="text-xl font-bold">Предпросмотр</h3>
           <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Сначала нажми «Сохранить изменения», затем открой главную.</p>
           <div className="flex flex-wrap gap-3 mt-4">

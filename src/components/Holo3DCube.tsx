@@ -28,6 +28,11 @@ const Holo3DCube = ({ className = "" }: { className?: string }) => (
             <span>{label}</span>
           </div>
         ))}
+        {/* Верх и низ без иконок — просто стеклянные грани, замыкающие куб.
+            Без них видна дыра в «крыше», и вращение читается как гнущаяся
+            открытая коробка, а не цельный объект. */}
+        <div className="holo-cube-face holo-cube-face--top" />
+        <div className="holo-cube-face holo-cube-face--bottom" />
       </div>
     </div>
   </div>

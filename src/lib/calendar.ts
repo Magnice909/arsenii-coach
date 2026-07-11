@@ -1,18 +1,13 @@
 import { Client, Workout } from "./storage";
-import { getDayWorkout, fetchPlanPeriodsInRange, PlanPeriod } from "./db";
+import { getDayWorkout, fetchPlanPeriodsInRange, PlanPeriod, toISODate } from "./db";
 import { supabase } from "./supabase";
+
+export { toISODate };
 
 /** Русские названия дней недели, индекс совпадает с JS Date.getDay() (0 = воскресенье). */
 const jsDayToName = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 export const dayNameForDate = (date: Date): string => jsDayToName[date.getDay()];
-
-export const toISODate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
 
 /** Все даты месяца, в котором лежит anchor, плюс хвосты соседних месяцев,
  *  чтобы сетка всегда была кратна 7 дням (как в обычном календарном виджете). */

@@ -4,8 +4,9 @@ import { enablePushNotifications, sendCoachPush } from "../lib/push";
 import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { getErrorMessage } from "../lib/errors";
 import CalendarView from "../components/CalendarView";
-import { buildCalendarEntries, CalendarWorkoutEntry } from "../lib/calendar";
+import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type NavItem = { id: string; label: string; icon: LucideIcon };
 const clientNavItems: NavItem[] = [
@@ -100,8 +101,7 @@ const ClientDashboard = () => {
     try {
       const rangeStart = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 21);
       const rangeEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 2, 10);
-      const toIso = (d: Date) => d.toISOString().slice(0, 10);
-      const entries = await buildCalendarEntries([client], workouts, toIso(rangeStart), toIso(rangeEnd));
+      const entries = await buildCalendarEntries([client], workouts, toISODate(rangeStart), toISODate(rangeEnd));
       setCalendarEntries(entries);
     } catch {
       setCalendarEntries(new Map());
@@ -145,7 +145,7 @@ const ClientDashboard = () => {
       await enablePushNotifications(user?.id);
       setPushStatus("Уведомления включены на этом устройстве");
     } catch (error) {
-      setPushStatus(error instanceof Error ? error.message : "Не удалось включить уведомления");
+      setPushStatus(getErrorMessage(error, "Не удалось включить уведомления"));
     }
   };
 
@@ -279,7 +279,7 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
   const [muscleGroup, setMuscleGroup] = useState(muscleGroups[0]);
   const [exerciseName, setExerciseName] = useState(exerciseOptions[0] || "");
   const [maxWeight, setMaxWeight] = useState("");
-  const [recordedDate, setRecordedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [recordedDate, setRecordedDate] = useState(toISODate(new Date()));
   const [groupFilter, setGroupFilter] = useState("all");
   const [exerciseFilter, setExerciseFilter] = useState("all");
   const [status, setStatus] = useState("");
@@ -317,7 +317,7 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
       setExerciseFilter(created.exerciseName);
       setStatus("Запись добавлена");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Не удалось добавить запись");
+      setStatus(getErrorMessage(error, "Не удалось добавить запись"));
     }
   };
 

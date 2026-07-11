@@ -3,10 +3,11 @@ import { Bell, CalendarDays, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, Mor
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO } from "../lib/db";
 import CalendarView from "../components/CalendarView";
-import { buildCalendarEntries, CalendarWorkoutEntry } from "../lib/calendar";
+import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type Application = {
   id: string;
@@ -86,7 +87,7 @@ const CoachDashboard = () => {
       setSelectedWorkoutId(syncedWorkouts[0]?.id || "");
       setSyncStatus("");
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось синхронизировать данные");
+      setSyncStatus(getErrorMessage(error, "Не удалось синхронизировать данные"));
     }
   };
 
@@ -135,11 +136,10 @@ const CoachDashboard = () => {
     try {
       const rangeStart = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 21);
       const rangeEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 2, 10);
-      const toIso = (d: Date) => d.toISOString().slice(0, 10);
-      const entries = await buildCalendarEntries(clients, workouts, toIso(rangeStart), toIso(rangeEnd));
+      const entries = await buildCalendarEntries(clients, workouts, toISODate(rangeStart), toISODate(rangeEnd));
       setCalendarEntries(entries);
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось загрузить календарь");
+      setSyncStatus(getErrorMessage(error, "Не удалось загрузить календарь"));
     } finally {
       setCalendarLoading(false);
     }
@@ -165,7 +165,7 @@ const CoachDashboard = () => {
           if (patch.weeklyPlan || patch.assignedWorkoutId) await replaceWeeklyPlanRecord(user.id!, updated.id, updated.weeklyPlan || {});
           if (planChanged && updated.userId) await sendPushToUsers([updated.userId], "Новый план тренировок", "Арсений обновил ваш тренировочный план", "/#/client");
         })
-        .catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить клиента"));
+        .catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить клиента")));
     }
   };
 
@@ -177,7 +177,7 @@ const CoachDashboard = () => {
       setSelectedClientId(client.id);
       setTab("clients");
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось добавить клиента");
+      setSyncStatus(getErrorMessage(error, "Не удалось добавить клиента"));
     }
   };
 
@@ -212,7 +212,7 @@ const CoachDashboard = () => {
     const updated = { ...selectedWorkout, ...patch };
     const next = workouts.map((workout) => workout.id === selectedWorkout.id ? updated : workout);
     saveWorkouts(next);
-    if (isSupabaseConfigured && user?.id) updateWorkoutRecord(user.id, updated).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить тренировку"));
+    if (isSupabaseConfigured && user?.id) updateWorkoutRecord(user.id, updated).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить тренировку")));
   };
 
   const addWorkout = async () => {
@@ -223,7 +223,7 @@ const CoachDashboard = () => {
       setSelectedWorkoutId(workout.id);
       setTab("workouts");
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось создать план");
+      setSyncStatus(getErrorMessage(error, "Не удалось создать план"));
     }
   };
 
@@ -236,7 +236,7 @@ const CoachDashboard = () => {
       saveWorkouts(next);
       setSelectedWorkoutId(next[0]?.id || "");
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось удалить план");
+      setSyncStatus(getErrorMessage(error, "Не удалось удалить план"));
     }
   };
 
@@ -255,7 +255,7 @@ const CoachDashboard = () => {
       saveWorkouts(next);
       setSelectedWorkoutId(copy.id);
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось дублировать план");
+      setSyncStatus(getErrorMessage(error, "Не удалось дублировать план"));
     }
   };
 
@@ -274,7 +274,7 @@ const CoachDashboard = () => {
         await sendPushToUsers(assignedClients.map((client) => client.userId || "").filter(Boolean), "Новый план тренировок", `Арсений назначил план ${workout.title}`, "/#/client");
         setSyncStatus("План назначен выбранным клиентам");
       } catch (error) {
-        setSyncStatus(error instanceof Error ? error.message : "Не удалось назначить план");
+        setSyncStatus(getErrorMessage(error, "Не удалось назначить план"));
       }
     }
   };
@@ -332,7 +332,7 @@ const CoachDashboard = () => {
       await enablePushNotifications(user?.id);
       setPushStatus("Push-уведомления включены для этого устройства");
     } catch (error) {
-      setPushStatus(error instanceof Error ? error.message : "Не удалось включить push-уведомления");
+      setPushStatus(getErrorMessage(error, "Не удалось включить push-уведомления"));
     }
   };
 
@@ -348,7 +348,7 @@ const CoachDashboard = () => {
         setMessages(fresh);
       }
     } catch (error) {
-      setSyncStatus(error instanceof Error ? error.message : "Не удалось отметить событие");
+      setSyncStatus(getErrorMessage(error, "Не удалось отметить событие"));
     }
   };
 
@@ -415,7 +415,7 @@ const CoachDashboard = () => {
         {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
-        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
+        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
       </section>
     </main>
   );
@@ -536,7 +536,8 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
   const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
   const [periodLoading, setPeriodLoading] = useState(true);
   const [newPlanWorkoutId, setNewPlanWorkoutId] = useState(workouts[0]?.id || "");
-  const [newPlanStartDate, setNewPlanStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newPlanStartDate, setNewPlanStartDate] = useState(toISODate(new Date()));
+  const [alsoAssignNextWeek, setAlsoAssignNextWeek] = useState(false);
   const [planActionStatus, setPlanActionStatus] = useState("");
   const [isSavingPeriod, setIsSavingPeriod] = useState(false);
 
@@ -595,10 +596,15 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
     setIsSavingPeriod(true);
     try {
       const period = await createPlanPeriod(client.id, newPlanWorkoutId, newPlanStartDate);
-      setPlanActionStatus(`План создан на ${period.startDate} – ${period.endDate}`);
+      let status = `План создан на ${period.startDate} – ${period.endDate}`;
+      if (alsoAssignNextWeek) {
+        const nextPeriod = await createPlanPeriod(client.id, newPlanWorkoutId, addDaysToISO(period.endDate, 1));
+        status += `, и на следующую неделю ${nextPeriod.startDate} – ${nextPeriod.endDate}`;
+      }
+      setPlanActionStatus(status);
       setCurrentPeriod(await fetchCurrentPlanPeriod(client.id));
     } catch (error) {
-      setPlanActionStatus(error instanceof Error ? error.message : "Не удалось создать план");
+      setPlanActionStatus(getErrorMessage(error, "Не удалось создать план"));
     } finally {
       setIsSavingPeriod(false);
     }
@@ -613,7 +619,7 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
       setPlanActionStatus(`План продлён: следующий период ${period.startDate} – ${period.endDate}`);
       setCurrentPeriod(await fetchCurrentPlanPeriod(client.id));
     } catch (error) {
-      setPlanActionStatus(error instanceof Error ? error.message : "Не удалось продлить план");
+      setPlanActionStatus(getErrorMessage(error, "Не удалось продлить план"));
     } finally {
       setIsSavingPeriod(false);
     }
@@ -652,7 +658,7 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
       setShowClientPassword(false);
       setAccountStatus(client.userId ? "Пароль клиента обновлён. Нажми «Показать», скопируй новый пароль и отправь клиенту." : "Аккаунт клиента создан. Пароль сохранён в этой вкладке. Нажми «Показать», скопируй его и отправь клиенту.");
     } catch (error) {
-      setAccountStatus(error instanceof Error ? error.message : "Не удалось создать аккаунт клиента");
+      setAccountStatus(getErrorMessage(error, "Не удалось создать аккаунт клиента"));
     } finally {
       setIsCreatingAccount(false);
     }
@@ -733,8 +739,12 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
           </label>
           <Field label="Дата начала (план будет на 7 дней от неё)" type="date" value={newPlanStartDate} onChange={setNewPlanStartDate} />
         </div>
+        <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer" style={{ color: "var(--ink-2)" }}>
+          <input type="checkbox" checked={alsoAssignNextWeek} onChange={(e) => setAlsoAssignNextWeek(e.target.checked)} />
+          Сразу занять и следующую неделю тем же планом
+        </label>
         <button type="button" onClick={handleCreatePeriod} disabled={isSavingPeriod} className="btn btn-primary btn-md mt-4">
-          {isSavingPeriod ? "Создаём..." : "Назначить план на 7 дней"}
+          {isSavingPeriod ? "Создаём..." : alsoAssignNextWeek ? "Назначить план на 2 недели" : "Назначить план на 7 дней"}
         </button>
         {planActionStatus && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{planActionStatus}</p>}
       </div>
@@ -991,7 +1001,7 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
       update({ photoDataUrl: url });
       setStatus("Фото загружено. Не забудь нажать «Сохранить изменения».");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Не удалось загрузить фото");
+      setStatus(getErrorMessage(error, "Не удалось загрузить фото"));
     } finally {
       setIsUploadingPhoto(false);
     }

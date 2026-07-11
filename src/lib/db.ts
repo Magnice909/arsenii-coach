@@ -1,6 +1,18 @@
 import { Client, DayWorkout, makeId, Message, SiteSettings, WeeklyTemplate, Workout } from "./storage";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
+/** Локальная дата в формате YYYY-MM-DD, без прохода через UTC.
+ *  `date.toISOString().slice(0, 10)` считает по UTC: в часовых поясах восточнее
+ *  UTC (Москва и т.п.) в первые часы суток это ошибочно даёт вчерашний день —
+ *  из-за этого «сегодня», недельные границы и даты периодов плана съезжали
+ *  на день, а end_date переставал совпадать с CHECK-ограничением в базе
+ *  (end_date = start_date + 6), и создание/продление плана падало с ошибкой. */
+export const toISODate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const getCurrentWeekRange = () => {
   const now = new Date();
@@ -9,7 +21,7 @@ const getCurrentWeekRange = () => {
   monday.setDate(now.getDate() - day);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
+  return { start: toISODate(monday), end: toISODate(sunday) };
 };
 
 const makeProgressKey = (day: string, workoutId: string) => `${day}::${workoutId}`;
@@ -103,7 +115,7 @@ export const fetchCoachData = async (coachId: string) => {
 
   const clientIds = (clientRows || []).map((row) => row.id);
   const { start, end } = getCurrentWeekRange();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toISODate(new Date());
   const [{ data: completionRows }, activePeriods] = await Promise.all([
     clientIds.length
       ? supabase.from("workout_completions").select("client_id, day_of_week, workout_id").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
@@ -255,7 +267,7 @@ export const fetchClientData = async (userId: string) => {
   // в старом «Шаблоне тренировок»), клиент не видел свою тренировку вообще:
   // ни на вкладке «Сегодня», ни в календаре, ни в прогрессе.
   const periods = (periodRows || []).map(dbPlanPeriodToPeriod);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toISODate(new Date());
   const currentPeriod = periods.find((period) => period.startDate <= todayIso && todayIso <= period.endDate);
 
   const workoutIds = [...new Set([
@@ -366,7 +378,7 @@ export const createNotification = async (recipientId: string, title: string, bod
 
 
 export const getCompletionForToday = async (clientId: string, workoutId: string, dayOfWeek: string): Promise<boolean> => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISODate(new Date());
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) return false;
@@ -384,7 +396,7 @@ export const getCompletionForToday = async (clientId: string, workoutId: string,
 };
 
 export const markWorkoutCompleted = async (clientId: string, workoutId: string, dayOfWeek: string) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISODate(new Date());
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) throw new Error("Сессия клиента не найдена");
@@ -546,10 +558,9 @@ const dbPlanPeriodToPeriod = (row: any): PlanPeriod => ({
   endDate: row.end_date,
 });
 
-const addDaysToISO = (iso: string, days: number): string => {
-  const date = new Date(iso + "T00:00:00");
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+export const addDaysToISO = (iso: string, days: number): string => {
+  const [year, month, day] = iso.split("-").map(Number);
+  return toISODate(new Date(year, month - 1, day + days));
 };
 
 /** Создаёт новый 7-дневный план, начинающийся с указанной даты.
@@ -577,7 +588,7 @@ export const extendClientPlan = async (clientId: string, workoutId: string): Pro
     .maybeSingle();
   if (lastError) throw lastError;
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toISODate(new Date());
   const nextStart = lastPeriod?.end_date ? addDaysToISO(lastPeriod.end_date, 1) : todayIso;
   return createPlanPeriod(clientId, workoutId, nextStart);
 };
@@ -586,7 +597,7 @@ export const extendClientPlan = async (clientId: string, workoutId: string): Pro
  *  сегодняшняя дата. Переход на новый период происходит автоматически:
  *  просто меняется результат этого запроса, без какого-либо ручного действия. */
 export const fetchCurrentPlanPeriod = async (clientId: string): Promise<PlanPeriod | null> => {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toISODate(new Date());
   const { data, error } = await supabase
     .from("plan_periods")
     .select("*")

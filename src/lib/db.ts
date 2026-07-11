@@ -566,9 +566,27 @@ export const addDaysToISO = (iso: string, days: number): string => {
 /** Создаёт новый 7-дневный план, начинающийся с указанной даты.
  *  end_date всегда start_date + 6 — это проверяется и на уровне БД (CHECK). */
 export const createPlanPeriod = async (clientId: string, workoutId: string, startDate: string): Promise<PlanPeriod> => {
+  const endDate = addDaysToISO(startDate, 6);
+
+  // У клиента не может быть двух активных планов на одну и ту же дату.
+  // Раньше при создании плана поверх уже существующего (повторное
+  // назначение, гонка «Продлить»/«Назначить») в базе оставались две
+  // пересекающиеся строки — календарь показывал план нормально (берёт
+  // первый подходящий период), а вкладка «Сегодня» ломалась: она ищет
+  // ровно один активный период через .maybeSingle() и при двух строках
+  // получает ошибку «several rows returned», которая тихо превращалась
+  // в «плана нет». Поэтому чистим пересекающиеся периоды перед вставкой.
+  const { error: deleteError } = await supabase
+    .from("plan_periods")
+    .delete()
+    .eq("client_id", clientId)
+    .lte("start_date", endDate)
+    .gte("end_date", startDate);
+  if (deleteError) throw deleteError;
+
   const { data, error } = await supabase
     .from("plan_periods")
-    .insert({ client_id: clientId, workout_id: workoutId, start_date: startDate, end_date: addDaysToISO(startDate, 6) })
+    .insert({ client_id: clientId, workout_id: workoutId, start_date: startDate, end_date: endDate })
     .select("*")
     .single();
   if (error) throw error;
@@ -598,12 +616,19 @@ export const extendClientPlan = async (clientId: string, workoutId: string): Pro
  *  просто меняется результат этого запроса, без какого-либо ручного действия. */
 export const fetchCurrentPlanPeriod = async (clientId: string): Promise<PlanPeriod | null> => {
   const todayIso = toISODate(new Date());
+  // Без .limit(1) перед выборкой одной строки: если для клиента всё же
+  // оказалось два периода на сегодня (старые данные до фикса в
+  // createPlanPeriod), .maybeSingle() бросает ошибку «several rows
+  // returned», и клиент видит «плана нет», хотя план есть и виден в
+  // календаре. Берём один — самый недавно созданный — вместо падения.
   const { data, error } = await supabase
     .from("plan_periods")
     .select("*")
     .eq("client_id", clientId)
     .lte("start_date", todayIso)
     .gte("end_date", todayIso)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   return data ? dbPlanPeriodToPeriod(data) : null;

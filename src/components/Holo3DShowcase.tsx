@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /** Текстовая метка-«таблетка» на канвасе, натянутая на THREE.Sprite.
  *  Спрайт в three.js всегда развёрнут на камеру независимо от вращения
@@ -44,10 +41,8 @@ const makeLabelSprite = (text: string, borderColor: string) => {
   ctx.font = `700 ${fontSize}px Inter, sans-serif`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
-  // Без собственного canvas-свечения текста: bloom-постобработка сцены уже
-  // подсвечивает яркие пиксели, и двойное свечение (тень здесь + bloom
-  // поверх) выжигало текст в сплошное белое пятно, особенно у меток
-  // покрупнее на переднем плане.
+  ctx.shadowColor = borderColor;
+  ctx.shadowBlur = 12;
   ctx.fillStyle = "#dcf1ff";
   ctx.fillText(text, w / 2, h / 2 + 2);
 
@@ -139,7 +134,7 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
     const gem = new THREE.Mesh(geometry, material);
     group.add(gem);
 
-    const glowMaterial = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.2, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.3, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false });
     const glow = new THREE.Mesh(geometry, glowMaterial);
     glow.scale.setScalar(1.3);
     group.add(glow);
@@ -183,11 +178,6 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(particles);
 
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.8, 0.6, 0.3);
-    composer.addPass(bloomPass);
-
     // Лёгкий параллакс за курсором мыши по всей странице — не только над
     // самой сценой, это ощущается как реакция всей витрины на присутствие
     // пользователя, а не просто hover-эффект в узкой зоне.
@@ -223,7 +213,7 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
         });
         particles.rotation.y = elapsed * 0.02;
       }
-      composer.render();
+      renderer.render(scene, camera);
     };
     raf = requestAnimationFrame(render);
 
@@ -234,7 +224,6 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
       camera.aspect = aspect;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-      composer.setSize(width, height);
       // На узких (портретных) контейнерах горизонтальный угол обзора
       // меньше при том же вертикальном FOV, и орбиты меток с широким
       // радиусом упирались в край канваса и обрезались. Сжимаем всю
@@ -259,13 +248,12 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
       particleGeometry.dispose();
       particleMaterial.dispose();
       particleTexture.dispose();
-      composer.dispose();
       renderer.dispose();
       container.removeChild(renderer.domElement);
     };
   }, []);
 
-  return <div ref={containerRef} className={`pointer-events-none select-none ${className}`} aria-hidden="true" />;
+  return <div ref={containerRef} className={`pointer-events-none select-none ${className}`} style={{ filter: "drop-shadow(0 0 60px rgba(104,225,253,.16)) drop-shadow(0 0 100px rgba(139,92,246,.12))" }} aria-hidden="true" />;
 };
 
 export default Holo3DShowcase;

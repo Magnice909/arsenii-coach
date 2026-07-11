@@ -28,6 +28,9 @@ export type Client = {
   weeklyPlan: Record<string, string>;
   nextPlanId?: string;
   nextPlanWeekStart?: string;
+  /** Дата окончания текущего активного 7-дневного периода (plan_periods),
+   *  если он есть. Undefined — значит на сегодня активного плана нет вовсе. */
+  planEndDate?: string;
 };
 
 export type DayWorkout = {

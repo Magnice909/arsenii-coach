@@ -128,7 +128,11 @@ export const fetchCoachData = async (coachId: string) => {
   // странице считались только по старым weekly_plans/next_plan_id, из-за чего
   // тренер видел не тот план (и не тот прогресс), что реально видит клиент.
   const activeWorkoutIdByClient: Record<string, string> = {};
-  for (const period of activePeriods) activeWorkoutIdByClient[period.clientId] = period.workoutId;
+  const activeEndDateByClient: Record<string, string> = {};
+  for (const period of activePeriods) {
+    activeWorkoutIdByClient[period.clientId] = period.workoutId;
+    activeEndDateByClient[period.clientId] = period.endDate;
+  }
 
   const completedByClient: Record<string, { day_of_week: string; workout_id: string }[]> = {};
   for (const row of completionRows || []) {
@@ -141,6 +145,7 @@ export const fetchCoachData = async (coachId: string) => {
     const dueNextWorkout = isNextPlanDue(row.next_plan_week_start) ? workouts.find((workout) => workout.id === row.next_plan_id) : undefined;
     const weeklyPlan = activeWorkout ? buildWeeklyPlanFromWorkout(activeWorkout) : dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : (planByClient[row.id] || {});
     const client = dbClientToClient(row, workouts, weeklyPlan);
+    client.planEndDate = activeEndDateByClient[row.id];
     if (activeWorkout) {
       client.assignedWorkoutId = activeWorkout.id;
       client.plan = activeWorkout.title;

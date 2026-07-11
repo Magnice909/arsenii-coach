@@ -33,6 +33,13 @@ const emptyClient = (workoutId: string): Client => ({
 const emptyWorkout = (): Workout => ({ id: makeId(), title: "Новый недельный план", day: "Понедельник", focus: "", notes: "", exercises: [], weeklyTemplate: createEmptyWeeklyTemplate() });
 
 type NavItem = { id: string; label: string; icon: LucideIcon };
+// Планы не продлеваются сами: когда 7-дневный период заканчивается, а тренер
+// не назначил следующий вручную, клиент молча остаётся без плана. Помогаем
+// не забыть — считаем, у кого план уже закончился или заканчивается со дня
+// на день, чтобы показать предупреждение на «Обзоре» и в карточке клиента.
+const daysUntilIso = (iso: string) => Math.round((new Date(iso + "T00:00:00").getTime() - new Date(toISODate(new Date()) + "T00:00:00").getTime()) / 86400000);
+const needsPlanAttention = (client: Client) => client.status === "Активен" && (!client.planEndDate || daysUntilIso(client.planEndDate) <= 1);
+
 const coachNavItems: NavItem[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "calendar", label: "Календарь", icon: CalendarDays },
@@ -395,6 +402,7 @@ const CoachDashboard = () => {
 
         {tab === "overview" && <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
+          {clients.some(needsPlanAttention) && <div className="app-card rounded-2xl p-4" style={{ borderColor: "rgba(255,184,77,.35)", background: "rgba(255,184,77,.08)" }}><p className="font-semibold" style={{ color: "#ffb84d" }}>План не продлевается сам</p><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</p><button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button></div>}
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
 
@@ -453,7 +461,7 @@ const Metric = ({ title, value, onClick, hint }: { title: string; value: string 
   return <div className="stat-tile glass rounded-3xl p-5">{content}</div>;
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p></div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ffb84d" }}>План закончился или заканчивается — нужно продлить</p>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteApplication }: { applications: Application[]; clients: Client[]; onCreateClient: (application: Application) => void; onDeleteApplication: (application: Application) => void }) => {
   if (!applications.length) return <p style={{ color: "var(--ink-2)" }}>Заявок пока нет.</p>;
 
@@ -694,12 +702,17 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
             <p className="text-sm" style={{ color: "var(--ink-2)" }}>Сейчас активен план</p>
             <b className="text-lg block mt-1">{workouts.find((w) => w.id === currentPeriod.workoutId)?.title || "Тренировка"}</b>
             <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{currentPeriod.startDate} – {currentPeriod.endDate}</p>
+            {(() => {
+              const daysLeft = Math.round((new Date(currentPeriod.endDate + "T00:00:00").getTime() - new Date(toISODate(new Date()) + "T00:00:00").getTime()) / 86400000);
+              if (daysLeft > 1) return null;
+              return <p className="text-sm mt-2 font-semibold" style={{ color: "#ffb84d" }}>{daysLeft <= 0 ? "План заканчивается сегодня — план на следующую неделю сам не назначится." : "План заканчивается завтра — не забудь продлить или назначить новый."}</p>;
+            })()}
             <button type="button" onClick={handleExtendPeriod} disabled={isSavingPeriod} className="btn btn-primary btn-sm mt-3">
               {isSavingPeriod ? "Продлеваем..." : "Продлить ещё на 7 дней"}
             </button>
           </div>
         ) : (
-          <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>На сегодня у клиента нет активного плана.</p>
+          <p className="text-sm mb-4 font-semibold" style={{ color: "#ff8a98" }}>{client.status === "Активен" ? "У активного клиента сейчас нет плана на эту неделю — назначь новый ниже." : "На сегодня у клиента нет активного плана."}</p>
         )}
 
         <p className="text-sm font-semibold mb-2" style={{ color: "var(--ink-2)" }}>Назначить новый план</p>

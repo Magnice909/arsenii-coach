@@ -138,7 +138,6 @@ const Index = () => {
         <footer className="relative z-10 mx-auto max-w-6xl px-4 pb-10">
           <div className="border-t pt-7 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between" style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}>
             <div>© {new Date().getFullYear()} ArseniiCoach. Все права защищены.</div>
-            <div className="flex gap-5"><a href="#">Условия сайта</a><a href="#">Политика конфиденциальности</a></div>
           </div>
         </footer>
 

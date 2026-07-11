@@ -66,10 +66,15 @@ const CalendarView = ({ entriesByDate, loading, onMonthChange, renderDay }: Cale
               <span>{date.getDate()}</span>
               {entries.length > 0 && (
                 <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: allCompleted ? "var(--accent)" : "rgba(255,255,255,.45)" }}
+                  className="min-w-[16px] h-4 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center"
+                  style={{
+                    background: allCompleted ? "rgba(104,225,253,.22)" : "rgba(255,255,255,.10)",
+                    color: allCompleted ? "var(--accent)" : "var(--ink-2)",
+                  }}
                   aria-label={allCompleted ? "Все тренировки выполнены" : "Есть тренировки"}
-                />
+                >
+                  {entries.length}
+                </span>
               )}
             </button>
           );

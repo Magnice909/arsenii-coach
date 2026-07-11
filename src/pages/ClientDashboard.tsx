@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Apple, CalendarDays, CheckCircle2, ClipboardList, Dumbbell, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Send, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
-import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
+import { addDaysToISO, CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
@@ -251,7 +251,7 @@ const ClientDashboard = () => {
 
         {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
-        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
+        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
                 {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
@@ -293,16 +293,37 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
   );
 };
 
-const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, string>; workouts: Workout[] }) => {
+const WeeklySchedule = ({ weeklyPlan, workouts, currentPeriod, history }: { weeklyPlan: Record<string, string>; workouts: Workout[]; currentPeriod: PlanPeriod | null; history: CompletionHistoryItem[] }) => {
   const trainingDays = Object.keys(weeklyPlan || {}).sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
   if (!trainingDays.length) return <p style={{ color: "var(--ink-2)" }}>План пока пуст. Тренер ещё не добавил тренировочные дни.</p>;
-  return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{trainingDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); const dayWorkout = getDayWorkout(workout, day); return <div key={day} className="app-card rounded-2xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{dayWorkout?.title || "Тренировка"}</b>{dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{`${dayWorkout.exercises.length} упражнений`}</p>}</div>; })}</div>;
+  // Дата конкретного дня внутри активного периода — чтобы отметить его выполненным,
+  // только если клиент отметил именно эту тренировку в эту календарную неделю, а не
+  // в какую-то из прошлых недель с тем же днём/планом.
+  const periodStartDayIndex = currentPeriod ? weekDays.indexOf(weekDays[(new Date(currentPeriod.startDate + "T00:00:00").getDay() + 6) % 7]) : -1;
+  return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{trainingDays.map((day) => {
+    const workout = workouts.find((item) => item.id === weeklyPlan[day]);
+    const dayWorkout = getDayWorkout(workout, day);
+    const isCurrentPeriodWorkout = currentPeriod && weeklyPlan[day] === currentPeriod.workoutId;
+    const dayDate = isCurrentPeriodWorkout ? addDaysToISO(currentPeriod!.startDate, (weekDays.indexOf(day) - periodStartDayIndex + 7) % 7) : null;
+    const isDone = Boolean(dayDate && history.some((item) => item.workoutId === currentPeriod!.workoutId && item.dayOfWeek === day && item.completedDate === dayDate));
+    return <div key={day} className="app-card rounded-2xl p-5">
+      <div className="flex items-center justify-between"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p>{isDone && <span className="badge badge-accent">Выполнено</span>}</div>
+      <b className="text-xl mt-2 block">{dayWorkout?.title || "Тренировка"}</b>
+      {dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{`${dayWorkout.exercises.length} упражнений`}</p>}
+    </div>;
+  })}</div>;
 };
 
 const muscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Руки", "Кор", "Другое"];
 
+// В плане тренировок упражнение записано одной строкой вместе с подходами/
+// повторами («Жим лёжа 4x8») — для подсказки в трекере силового прогресса
+// нужно только название, иначе оно не совпадает с уже сохранёнными записями
+// («Жим лёжа»).
+const stripSetsReps = (exercise: string) => exercise.replace(/\s*\d+\s*[xхX×]\s*\d+\s*$/u, "").trim();
+
 const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client: Client; userId: string; workouts: Workout[]; records: StrengthRecord[]; onAdd: (record: StrengthRecord) => void }) => {
-  const exerciseOptions = Array.from(new Set(workouts.flatMap((workout) => Object.values(workout.weeklyTemplate || {}) as DayWorkout[]).flatMap((day) => day.exercises || []))).filter(Boolean);
+  const exerciseOptions = Array.from(new Set(workouts.flatMap((workout) => Object.values(workout.weeklyTemplate || {}) as DayWorkout[]).flatMap((day) => day.exercises || []).map(stripSetsReps))).filter(Boolean);
   const [muscleGroup, setMuscleGroup] = useState(muscleGroups[0]);
   const [exerciseName, setExerciseName] = useState(exerciseOptions[0] || "");
   const [maxWeight, setMaxWeight] = useState("");

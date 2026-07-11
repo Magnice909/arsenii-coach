@@ -71,6 +71,9 @@ const Index = () => {
               <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
                 {["План", "Питание", "Контроль"].map((item) => <div key={item} className="app-card rounded-2xl p-4 text-center"><b>{item}</b><p className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>в системе</p></div>)}
               </div>
+              <div className="mt-10 flex justify-center 2xl:hidden">
+                <Holo3DCube />
+              </div>
             </div>
             <div id="apply"><MultiStepForm /></div>
           </section>

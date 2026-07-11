@@ -52,6 +52,20 @@ const ClientDashboard = () => {
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
   const [periodLoading, setPeriodLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Тренер меняет план в отдельной вкладке/сессии кабинета тренера, а этот кабинет
+  // клиента — обычное SPA-состояние, которое само по себе не узнаёт об изменениях
+  // в базе. Если клиент просто переключался между вкладками (или телефон гас и
+  // включался), план и статус «выполнено» на экране оставались от прошлой загрузки
+  // и не совпадали с тем, что реально назначено сейчас. Обновляем данные при
+  // возврате на вкладку.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") setRefreshKey((key) => key + 1); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
+  }, []);
 
   useEffect(() => {
     if (!client?.id) { setCurrentPeriod(null); setPeriodLoading(false); return; }
@@ -62,7 +76,7 @@ const ClientDashboard = () => {
       .catch(() => { if (!cancelled) setCurrentPeriod(null); })
       .finally(() => { if (!cancelled) setPeriodLoading(false); });
     return () => { cancelled = true; };
-  }, [client?.id]);
+  }, [client?.id, refreshKey]);
 
   const todayName = weekDays[(new Date().getDay() + 6) % 7];
   // «Сегодня» теперь определяется активным 7-дневным периодом (currentPeriod),
@@ -91,9 +105,14 @@ const ClientDashboard = () => {
   })();
 
   useEffect(() => {
-    if (!client?.id || !workout?.id) return;
+    // Сбрасываем сразу, а не только по результату запроса: иначе если план
+    // сменился на тренировку, которой ещё нет в уже загрученном workouts
+    // (workout не резолвится), эффект ниже выходит по guard'у и статус
+    // «выполнено» от предыдущей тренировки остаётся висеть на экране.
+    if (!client?.id || !currentPeriod?.workoutId) { setCompletedToday(false); return; }
+    if (!workout?.id) { setCompletedToday(false); return; }
     getCompletionForToday(client.id, workout.id, todayName).then(setCompletedToday).catch(() => setCompletedToday(false));
-  }, [client?.id, workout?.id, todayName]);
+  }, [client?.id, workout?.id, currentPeriod?.workoutId, todayName]);
 
   const loadCalendarMonth = async (anchor: Date) => {
     if (!isSupabaseConfigured || !client) { setCalendarEntries(new Map()); return; }
@@ -138,7 +157,7 @@ const ClientDashboard = () => {
       }
     };
     load();
-  }, [user?.id]);
+  }, [user?.id, refreshKey]);
 
   const enableClientPush = async () => {
     try {

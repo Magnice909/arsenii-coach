@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import IntroScreen from "../components/IntroScreen";
 import MultiStepForm from "../components/MultiStepForm";
@@ -8,10 +8,6 @@ import HoloCard from "../components/HoloCard";
 import { getSiteSettings } from "../lib/storage";
 import { fetchSiteSettingsDb } from "../lib/db";
 import { isSupabaseConfigured } from "../lib/supabase";
-
-// WebGL-сцена — тяжёлая (three.js), грузим отдельным чанком отдельно от
-// остального лендинга, чтобы она не задерживала первую отрисовку страницы.
-const Holo3DShowcase = lazy(() => import("../components/Holo3DShowcase"));
 
 const features = [
   { icon: "◉", title: "Персональный план тренировок", desc: "Программа строится вокруг вашего графика, уровня и цели.", tag: "Training" },
@@ -85,18 +81,11 @@ const Index = () => {
                 <button onClick={scrollToApply} className="btn-shine rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>{settings.ctaText}</button>
                 <a href="#included" className="rounded-full px-6 py-3 glass">Что входит</a>
               </motion.div>
+              <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
+                {["План", "Питание", "Контроль"].map((item) => <div key={item} className="app-card rounded-2xl p-4 text-center"><b>{item}</b><p className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>в системе</p></div>)}
+              </div>
             </div>
             <div id="apply"><MultiStepForm /></div>
-          </section>
-
-          {/* Крупная витринная 3D-сцена — отдельная полноширинная секция, а не
-              часть hero-сетки: так можно сделать её действительно большой,
-              не деля место с заголовком/формой и не рискуя наложением при
-              редактировании текста тренером. */}
-          <section className="mx-auto mt-6 md:mt-10 max-w-6xl px-4">
-            <div className="relative h-[320px] sm:h-[420px] md:h-[520px]">
-              <Suspense fallback={null}><Holo3DShowcase className="absolute inset-0" /></Suspense>
-            </div>
           </section>
 
           <section className="mx-auto mt-16 max-w-6xl px-4">

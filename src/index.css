@@ -99,18 +99,26 @@
 @keyframes holo-text-sweep { to { background-position: 260% 0; } }
 .holo-text { background: linear-gradient(110deg, var(--accent) 0%, var(--accent) 20%, var(--secondary-accent) 38%, #ff8ad8 46%, var(--secondary-accent) 54%, var(--accent) 72%, var(--accent) 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: holo-text-sweep 6s linear infinite; }
 
-/* Спортивная голограмма-декорация (гантель): парит, покачивается,
-   просвечивается бегущей линией сканирования. */
-.holo-sport { position: relative; width: 220px; height: 140px; }
-.holo-sport-ring { position: absolute; inset: -25%; border-radius: 50%; background: radial-gradient(circle, rgba(104,225,253,.18), transparent 70%); animation: holo-sport-pulse 3.2s ease-in-out infinite; }
-.holo-sport-svg { position: relative; width: 100%; height: 100%; filter: drop-shadow(0 0 10px rgba(104,225,253,.5)) drop-shadow(0 0 24px rgba(139,92,246,.32)); animation: holo-sport-float 5s ease-in-out infinite; }
-.holo-sport-scan { position: absolute; left: 6%; right: 6%; height: 2px; top: 6%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent); border-radius: 999px; animation: holo-sport-scan 2.8s ease-in-out infinite; opacity: 0; }
-@keyframes holo-sport-float { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-12px) rotate(3deg); } }
-@keyframes holo-sport-pulse { 0%, 100% { opacity: .45; transform: scale(1); } 50% { opacity: .85; transform: scale(1.1); } }
-@keyframes holo-sport-scan { 0% { top: 6%; opacity: 0; } 12% { opacity: .9; } 88% { opacity: .9; } 100% { top: 92%; opacity: 0; } }
+/* Настоящий 3D-объект на чистом CSS: куб с гранями в пространстве
+   (transform-style: preserve-3d), а не плоская иконка с покачиванием.
+   Полупрозрачные грани — специально: сквозь них видно противоположную
+   грань, это и даёт эффект голограммы, а не твёрдого предмета. */
+.holo-cube-scene { position: relative; width: 176px; height: 176px; perspective: 1000px; animation: holo-cube-float 6s ease-in-out infinite; }
+.holo-cube-base { position: absolute; left: 50%; bottom: -14px; width: 130px; height: 26px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(ellipse, rgba(104,225,253,.35), transparent 72%); animation: holo-cube-base-pulse 6s ease-in-out infinite; }
+.holo-cube { position: absolute; inset: 0; transform-style: preserve-3d; animation: holo-cube-spin 11s linear infinite; }
+.holo-cube-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; border-radius: 20px; background: linear-gradient(165deg, rgba(104,225,253,.16), rgba(139,92,246,.10)); border: 1px solid rgba(104,225,253,.4); box-shadow: inset 0 0 26px rgba(104,225,253,.16), 0 0 26px rgba(104,225,253,.14); backdrop-filter: blur(1px); }
+.holo-cube-face svg { filter: drop-shadow(0 0 6px rgba(104,225,253,.7)); color: var(--accent); }
+.holo-cube-face span { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.holo-cube-face--front { transform: rotateY(0deg) translateZ(88px); }
+.holo-cube-face--right { transform: rotateY(90deg) translateZ(88px); }
+.holo-cube-face--back { transform: rotateY(180deg) translateZ(88px); }
+.holo-cube-face--left { transform: rotateY(-90deg) translateZ(88px); }
+@keyframes holo-cube-spin { from { transform: rotateY(0deg) rotateX(-10deg); } to { transform: rotateY(360deg) rotateX(-10deg); } }
+@keyframes holo-cube-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes holo-cube-base-pulse { 0%, 100% { opacity: .55; transform: translateX(-50%) scale(1); } 50% { opacity: .9; transform: translateX(-50%) scale(1.15); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-mark, .aurora-a, .aurora-b, .aurora-c, .holo-text, .holo-sport-ring, .holo-sport-svg, .holo-sport-scan { animation: none !important; }
+  .logo-mark, .aurora-a, .aurora-b, .aurora-c, .holo-text, .holo-cube-scene, .holo-cube, .holo-cube-base { animation: none !important; }
   .holo-card { transition: none !important; }
   .btn-shine::after { transition: none !important; }
 }

@@ -226,14 +226,15 @@ const ClientDashboard = () => {
         <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
       </aside>
 
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch pb-[env(safe-area-inset-bottom)]" style={{ background: "rgba(8,12,18,.92)", backdropFilter: "blur(14px)", borderTop: "1px solid var(--line)" }}>
+      <nav className="tabbar-glass lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch pb-[env(safe-area-inset-bottom)]">
         {clientNavItems.filter((item) => clientMobilePrimaryIds.includes(item.id)).map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]">
+          <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] relative">
+            {tab === id && <span className="tabbar-glass-pill" />}
             <span className="relative">
               <Icon size={20} strokeWidth={tab === id ? 2.4 : 1.8} color={tab === id ? "var(--accent)" : "var(--ink-3)"} />
               {id === "today" && todayNeedsAttention && <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />}
             </span>
-            <span style={{ color: tab === id ? "var(--accent)" : "var(--ink-3)" }}>{label}</span>
+            <span className="relative" style={{ color: tab === id ? "var(--accent)" : "var(--ink-3)" }}>{label}</span>
           </button>
         ))}
         <button onClick={() => setMobileMenuOpen(true)} className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]">

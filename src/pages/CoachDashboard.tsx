@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Settings, Users, X, type LucideIcon } from "lucide-react";
+import { Bell, CalendarDays, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -393,11 +393,11 @@ const CoachDashboard = () => {
       <section className="p-4 pt-6 pb-28 md:p-8 lg:pt-8 lg:pb-8 relative overflow-hidden">
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-          <div><div className="eyebrow">Кабинет тренера</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || "Арсений"}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || "@president_h"}</p></div>
-          <div className="flex gap-3 flex-wrap"><button onClick={addClient} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить клиента</button><button onClick={addWorkout} className="rounded-full px-5 py-3 glass">Создать план</button></div>
+          <div><div className="eyebrow">Кабинет тренера</div><h1 className="mt-2 text-3xl md:text-4xl font-extrabold tracking-[-.02em]">Привет, {user?.name || "Арсений"}</h1><p className="mt-1" style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || "@president_h"}</p></div>
+          <div className="flex gap-3 flex-wrap"><button onClick={addClient} className="btn btn-primary btn-lg"><Users size={17} /> Добавить клиента</button><button onClick={addWorkout} className="btn btn-secondary btn-lg glass"><Dumbbell size={17} /> Создать план</button></div>
         </header>
 
-        {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4" style={{ color: "#ffb4c1" }}>{syncStatus}</div>}
+        {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4 text-sm" style={{ color: syncStatus.endsWith("...") || syncStatus === "План назначен выбранным клиентам" ? "var(--ink-2)" : "#ff8a98" }}>{syncStatus}</div>}
 
         {tab === "overview" && <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
@@ -406,16 +406,16 @@ const CoachDashboard = () => {
 
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="недельный план каждого клиента, спроецированный на даты"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <CoachCalendarDay date={date} entries={entries} onOpenClient={(clientId) => { setSelectedClientId(clientId); setTab("clients"); }} />} /></Panel>}
 
-        {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="rounded-full px-5 py-3 glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
+        {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-3xl p-4" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.day} • {w.exercises.length} упражнений</p></button>)}</div><WorkoutEditor workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
-        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><div className="mt-5 app-card rounded-3xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
-        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-3xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
+        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
+        {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(error instanceof Error ? error.message : "Не удалось сохранить главную")); }} /></Panel>}
       </section>
     </main>
   );
@@ -427,12 +427,12 @@ const CoachCalendarDay = ({ date, entries, onOpenClient }: { date: string; entri
     <div className="space-y-2">
       <p className="text-sm mb-1" style={{ color: "var(--ink-3)" }}>{new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" })}</p>
       {entries.map((entry) => (
-        <button key={`${entry.clientId}-${entry.workoutId}`} onClick={() => onOpenClient(entry.clientId)} className="w-full text-left app-card rounded-2xl p-3 flex items-center justify-between gap-3">
+        <button key={`${entry.clientId}-${entry.workoutId}`} onClick={() => onOpenClient(entry.clientId)} className="w-full text-left app-card rounded-2xl p-3 flex items-center justify-between gap-3 transition hover:bg-white/[.04]">
           <div>
             <b>{entry.clientName}</b>
             <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.title} • {entry.exerciseCount} упражнений</p>
           </div>
-          <span className="rounded-full px-3 py-1 text-xs shrink-0" style={{ background: entry.completed ? "rgba(104,225,253,.16)" : "rgba(255,255,255,.08)", color: entry.completed ? "var(--accent)" : "var(--ink-3)" }}>
+          <span className={`badge shrink-0 ${entry.completed ? "badge-accent" : "badge-neutral"}`}>
             {entry.completed ? "Выполнено" : "Запланировано"}
           </span>
         </button>
@@ -454,12 +454,12 @@ const NavList = ({ items, activeTab, messageCount, onSelect }: { items: NavItem[
 );
 
 const Metric = ({ title, value, onClick, hint }: { title: string; value: string | number; onClick?: () => void; hint?: string }) => {
-  const content = <><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-3xl mt-2 block">{value}</b>{hint && <span className="text-xs mt-2 block" style={{ color: "var(--accent)" }}>{hint}</span>}</>;
-  if (onClick) return <button onClick={onClick} className="glass rounded-3xl p-5 text-left hover:scale-[1.01] transition">{content}</button>;
-  return <div className="glass rounded-3xl p-5">{content}</div>;
+  const content = <><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b>{hint && <span className="text-xs mt-3 inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent)" }}>{hint} →</span>}</>;
+  if (onClick) return <button onClick={onClick} className="stat-tile glass rounded-3xl p-5 text-left transition hover:-translate-y-0.5 hover:border-[rgba(104,225,253,.32)]">{content}</button>;
+  return <div className="stat-tile glass rounded-3xl p-5">{content}</div>;
 };
-const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-3xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3"><div><h3 className="font-bold text-xl">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p></div><div className="text-left md:text-right"><span className="rounded-full px-3 py-1 text-sm" style={{ background: c.status === "Пропуск" ? "rgba(255,120,140,.13)" : "rgba(104,225,253,.13)", color: c.status === "Пропуск" ? "#ff8a98" : "var(--accent)" }}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p></div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteApplication }: { applications: Application[]; clients: Client[]; onCreateClient: (application: Application) => void; onDeleteApplication: (application: Application) => void }) => {
   if (!applications.length) return <p style={{ color: "var(--ink-2)" }}>Заявок пока нет.</p>;
 
@@ -472,19 +472,19 @@ const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteAppli
         );
         const isAdded = hasMatchingClient;
         return (
-        <div key={application.id} className="app-card rounded-3xl p-5">
+        <div key={application.id} className="app-card rounded-2xl p-5">
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-2xl font-bold">{application.name || "Без имени"}</h3>
-                <span className="rounded-full px-3 py-1 text-xs" style={{ background: "rgba(104,225,253,.13)", color: "var(--accent)" }}>{isAdded ? "Добавлена в клиенты" : "Новая"}</span>
+                <h3 className="text-xl font-bold">{application.name || "Без имени"}</h3>
+                <span className="badge badge-accent">{isAdded ? "Добавлена в клиенты" : "Новая"}</span>
               </div>
               <p className="mt-1" style={{ color: "var(--ink-2)" }}>{application.telegram} • {application.email}</p>
               {application.created_at && <p className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>{new Date(application.created_at).toLocaleString("ru-RU")}</p>}
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {isAdded ? <span className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(104,225,253,.12)", color: "var(--accent)" }}>Уже в клиентах</span> : <button onClick={() => onCreateClient(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить в клиенты</button>}
-              <button onClick={() => onDeleteApplication(application)} className="rounded-full px-5 py-3 font-semibold" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить заявку</button>
+            <div className="flex gap-2 flex-wrap items-center">
+              {isAdded ? <span className="badge badge-accent">Уже в клиентах</span> : <button onClick={() => onCreateClient(application)} className="btn btn-primary btn-md">Добавить в клиенты</button>}
+              <button onClick={() => onDeleteApplication(application)} className="btn btn-danger btn-md">Удалить заявку</button>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 text-sm" style={{ color: "var(--ink-2)" }}>
@@ -509,7 +509,7 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
     <div className="app-card rounded-2xl p-4">
       <b>Как с этим работать</b>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-2)" }}>Это не чат, а список событий: заявка, выполненная тренировка или действие клиента. Чтобы ответить, открой клиента и напиши ему в Telegram, либо поменяй план/комментарий в карточке клиента.</p>
-      {onOpenClients && <button onClick={onOpenClients} className="mt-3 rounded-full px-4 py-2 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Открыть клиентов</button>}
+      {onOpenClients && <button onClick={onOpenClients} className="btn btn-primary btn-sm mt-3">Открыть клиентов</button>}
     </div>
     {!messages.length && <p style={{ color: "var(--ink-2)" }}>Новых событий пока нет.</p>}
     {messages.map(m => <div key={m.id} className="app-card rounded-2xl p-4">
@@ -517,15 +517,15 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
       <p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p>
       <span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span>
       <div className="mt-3 flex gap-2 flex-wrap">
-        {onOpenClients && <button onClick={onOpenClients} className="rounded-full px-4 py-2 glass text-sm">Открыть клиента</button>}
-        {onMarkRead && <button onClick={() => onMarkRead(m.id)} className="rounded-full px-4 py-2 glass text-sm">Прочитано</button>}
+        {onOpenClients && <button onClick={onOpenClients} className="btn btn-secondary btn-sm glass">Открыть клиента</button>}
+        {onMarkRead && <button onClick={() => onMarkRead(m.id)} className="btn btn-secondary btn-sm glass">Прочитано</button>}
       </div>
     </div>)}
   </div>
 );
 
-const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)", boxSizing: "border-box", fontSize: "16px" }} /></label>;
-const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
+const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="field-label">{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="field-input" style={{ fontSize: "16px" }} /></label>;
+const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="field-label">{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="field-input resize-none" /></label>;
 
 const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }: { client: Client; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
   const [clientPassword, setClientPassword] = useState("");
@@ -669,7 +669,7 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
         <Field label="Следующая тренировка" value={client.nextWorkout} onChange={(nextWorkout) => onChange({ nextWorkout })} />
       </div>
 
-      <div className="app-card rounded-3xl p-4">
+      <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Аккаунт клиента</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>
           Пароль не сохраняется в коде сайта и не записывается в базу clients. Он передаётся в Supabase Auth через защищённую серверную функцию.
@@ -678,12 +678,12 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
             Временный пароль клиента
             <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
-              <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="w-full rounded-xl px-4 py-3 cursor-default" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
-              <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="rounded-xl px-4 glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
-              <button type="button" onClick={generatePassword} className="rounded-xl px-4 glass">Сгенерировать</button>
+              <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="field-input mt-0 cursor-default" />
+              <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="btn btn-secondary btn-md glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
+              <button type="button" onClick={generatePassword} className="btn btn-secondary btn-md glass">Сгенерировать</button>
             </div>
           </label>
-          <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="rounded-xl px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+          <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="btn btn-primary btn-md">
             {client.userId ? (isCreatingAccount ? "Обновляю..." : "Обновить пароль") : (isCreatingAccount ? "Создаю..." : "Создать аккаунт")}
           </button>
         </div>
@@ -691,20 +691,20 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
         {accountStatus && <p className="text-sm mt-3" style={{ color: ["создан", "сгенерирован", "обновлён", "привязан", "Скопируй"].some((word) => accountStatus.includes(word)) ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
       </div>
 
-      <div className="app-card rounded-3xl p-4">
+      <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Шаблон тренировок по дням недели</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Это «рецепт» плана — какая тренировка идёт в какой день недели. Сам план становится активным только когда ты назначишь ему конкретную дату начала ниже.</p>
         <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
           Шаблон тренировок
-          <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+          <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="field-input">
             <option value="">План не выбран</option>
             {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
           </select>
         </label>
-        <button type="button" onClick={saveWeeklyTemplate} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить шаблон</button>
+        <button type="button" onClick={saveWeeklyTemplate} className="btn btn-primary btn-md mt-4">Сохранить шаблон</button>
       </div>
 
-      <div className="app-card rounded-3xl p-4">
+      <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Активный план (7 дней)</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>План действует ровно 7 дней с выбранной даты. По окончании недели календарь автоматически перестаёт его показывать — никаких ручных переключений не нужно.</p>
 
@@ -715,7 +715,7 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
             <p className="text-sm" style={{ color: "var(--ink-2)" }}>Сейчас активен план</p>
             <b className="text-lg block mt-1">{workouts.find((w) => w.id === currentPeriod.workoutId)?.title || "Тренировка"}</b>
             <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{currentPeriod.startDate} – {currentPeriod.endDate}</p>
-            <button type="button" onClick={handleExtendPeriod} disabled={isSavingPeriod} className="mt-3 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            <button type="button" onClick={handleExtendPeriod} disabled={isSavingPeriod} className="btn btn-primary btn-sm mt-3">
               {isSavingPeriod ? "Продлеваем..." : "Продлить ещё на 7 дней"}
             </button>
           </div>
@@ -727,13 +727,13 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
             Тренировка
-            <select value={newPlanWorkoutId} onChange={(e) => setNewPlanWorkoutId(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+            <select value={newPlanWorkoutId} onChange={(e) => setNewPlanWorkoutId(e.target.value)} className="field-input">
               {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
             </select>
           </label>
           <Field label="Дата начала (план будет на 7 дней от неё)" type="date" value={newPlanStartDate} onChange={setNewPlanStartDate} />
         </div>
-        <button type="button" onClick={handleCreatePeriod} disabled={isSavingPeriod} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+        <button type="button" onClick={handleCreatePeriod} disabled={isSavingPeriod} className="btn btn-primary btn-md mt-4">
           {isSavingPeriod ? "Создаём..." : "Назначить план на 7 дней"}
         </button>
         {planActionStatus && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{planActionStatus}</p>}
@@ -742,7 +742,7 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
       <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
       <CoachStrengthProgress records={strengthRecords} />
-      <button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить клиента</button>
+      <button onClick={onDelete} className="btn btn-danger btn-md"><Trash2 size={16} /> Удалить клиента</button>
     </div>
   );
 };
@@ -763,8 +763,8 @@ const CoachStrengthProgress = ({ records }: { records: StrengthRecord[] }) => {
       <h3 className="text-xl font-bold">Силовой прогресс клиента</h3>
       <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Данные, которые клиент сам добавляет в своём кабинете.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
-        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="field-input"><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="field-input"><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
       </div>
       <CoachStrengthChart records={filtered} />
     </div>
@@ -811,14 +811,14 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
     <div>
       <div className="flex items-center justify-between gap-3 mt-4 mb-2">
         <label className="text-sm" style={{ color: "var(--ink-3)" }}>Упражнения</label>
-        <button type="button" onClick={addExercise} className="rounded-full px-4 py-2 text-sm glass">Добавить упражнение</button>
+        <button type="button" onClick={addExercise} className="btn btn-secondary btn-sm glass"><Plus size={14} /> Добавить упражнение</button>
       </div>
       <div className="space-y-2">
         {exercises.length === 0 && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Упражнений пока нет. Нажмите «Добавить упражнение».</p>}
         {exercises.map((exercise, index) => (
           <div key={index} className="grid grid-cols-[1fr_auto] gap-2">
-            <input value={exercise} onChange={(event) => updateExercise(index, event.target.value)} placeholder="Например: Жим лёжа — 4×8" className="w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
-            <button type="button" onClick={() => removeExercise(index)} className="rounded-xl px-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>×</button>
+            <input value={exercise} onChange={(event) => updateExercise(index, event.target.value)} placeholder="Например: Жим лёжа — 4×8" className="field-input mt-0" />
+            <button type="button" aria-label="Удалить упражнение" onClick={() => removeExercise(index)} className="btn btn-danger px-3.5">×</button>
           </div>
         ))}
       </div>
@@ -903,13 +903,13 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
       </div>
       <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
 
-      <div className="app-card rounded-3xl p-4">
+      <div className="app-card rounded-2xl p-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
           <div>
             <h3 className="text-xl font-bold">Тренировочные дни</h3>
             <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>Добавляй только те дни, когда у клиента есть тренировка. Дни отдыха не создаются.</p>
           </div>
-          <button disabled={!availableDays.length} type="button" onClick={addTrainingDay} className="rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить день</button>
+          <button disabled={!availableDays.length} type="button" onClick={addTrainingDay} className="btn btn-primary btn-md"><Plus size={16} /> Добавить день</button>
         </div>
         {!usedDays.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>В плане пока нет тренировочных дней. Нажми «Добавить день».</p>}
         <div className="space-y-5">
@@ -918,10 +918,10 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
             return (
               <div key={day} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-                  <select value={day} onChange={(event) => renameTrainingDay(day, event.target.value)} className="rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+                  <select value={day} onChange={(event) => renameTrainingDay(day, event.target.value)} className="field-input mt-0 w-auto">
                     {[day, ...availableDays].sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b)).map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
-                  <button type="button" onClick={() => removeTrainingDay(day)} className="rounded-full px-4 py-2" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить день</button>
+                  <button type="button" onClick={() => removeTrainingDay(day)} className="btn btn-danger btn-sm">Удалить день</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Field label="Название тренировки" value={dayWorkout.title} onChange={(title) => updateDay(day, { title })} />
@@ -935,19 +935,19 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
         </div>
       </div>
 
-      <div className="app-card rounded-3xl p-4">
+      <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Массовое назначение</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери клиентов, которым нужно назначить этот план сразу.</p>
         {!clients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Клиентов пока нет.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {clients.map((client) => (
-            <label key={client.id} className="app-card rounded-2xl p-3 flex items-center gap-3">
+            <label key={client.id} className="app-card rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition hover:bg-white/[.04]">
               <input type="checkbox" checked={bulkClientIds.includes(client.id)} onChange={() => toggleBulkClient(client.id)} />
               <span>{client.name}</span>
             </label>
           ))}
         </div>
-        <button type="button" disabled={!bulkClientIds.length} onClick={handleBulkAssign} className="mt-4 rounded-full px-5 py-3 font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--bg)" }}>Назначить выбранным</button>
+        <button type="button" disabled={!bulkClientIds.length} onClick={handleBulkAssign} className="btn btn-primary btn-md mt-4">Назначить выбранным</button>
       </div>
 
       <div className="sticky bottom-4 z-20 glass rounded-3xl p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
@@ -957,9 +957,9 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
           {status && <p className="text-sm mt-1" style={{ color: "var(--accent)" }}>{status}</p>}
         </div>
         <div className="flex gap-3 flex-wrap">
-          <button onClick={save} className="rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить план</button>
-          <button onClick={onDuplicate} className="rounded-full px-5 py-3 glass">Дублировать план</button>
-          <button onClick={onDelete} className="rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Удалить план</button>
+          <button onClick={save} className="btn btn-primary btn-lg">Сохранить план</button>
+          <button onClick={onDuplicate} className="btn btn-secondary btn-md glass"><Copy size={16} /> Дублировать план</button>
+          <button onClick={onDelete} className="btn btn-danger btn-md"><Trash2 size={16} /> Удалить план</button>
         </div>
       </div>
     </div>
@@ -1028,25 +1028,27 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
             <p className="text-sm" style={{ color: "var(--ink-3)" }}>Изменения применятся после нажатия кнопки.</p>
             {status && <p className="text-sm mt-1" style={{ color: status.includes("сохран") ? "var(--accent)" : "var(--ink-2)" }}>{status}</p>}
           </div>
-          <button onClick={save} className="rounded-full px-6 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Сохранить изменения</button>
+          <button onClick={save} className="btn btn-primary btn-lg">Сохранить изменения</button>
         </div>
       </div>
       <div className="space-y-4">
-        <div className="app-card rounded-3xl p-4">
+        <div className="app-card rounded-2xl p-4">
           <h3 className="text-xl font-bold">Фото на главной</h3>
           <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Лучше загружать уже обрезанный вертикальный портрет 4:5 или 3:4.</p>
-          <div className="mt-4 aspect-[4/5] rounded-3xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
-            {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center rounded-2xl" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
+          <div className="mt-4 aspect-[4/5] rounded-2xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.06)", border: "1px solid var(--line)" }}>
+            {draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="Фото на главной" className="h-full w-full object-cover object-center" /> : <span style={{ color: "var(--ink-3)" }}>Фото не загружено</span>}
           </div>
-          <input type="file" accept="image/*" disabled={isUploadingPhoto} onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="mt-4 w-full rounded-xl px-4 py-3 disabled:opacity-50" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} />
+          <input type="file" accept="image/*" disabled={isUploadingPhoto} onChange={(event) => uploadPhoto(event.target.files?.[0] || null)} className="field-input mt-4 disabled:opacity-50" />
           {isUploadingPhoto && <p className="mt-2 text-sm" style={{ color: "var(--accent)" }}>Загружаем...</p>}
-          <button onClick={() => update({ photoDataUrl: "" })} className="mt-3 rounded-full px-5 py-3 app-card">Убрать фото</button>
+          <button onClick={() => update({ photoDataUrl: "" })} className="btn btn-secondary btn-md mt-3">Убрать фото</button>
         </div>
-        <div className="app-card rounded-3xl p-4">
+        <div className="app-card rounded-2xl p-4">
           <h3 className="text-xl font-bold">Предпросмотр</h3>
           <p className="text-sm mt-2" style={{ color: "var(--ink-3)" }}>Сначала нажми «Сохранить изменения», затем открой главную.</p>
-          <button onClick={() => window.location.hash = "/"} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Открыть главную</button>
-          <button onClick={reset} className="mt-3 ml-0 xl:ml-3 rounded-full px-5 py-3" style={{ background: "rgba(255,120,140,.13)", color: "#ff8a98" }}>Сбросить тексты</button>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <button onClick={() => window.location.hash = "/"} className="btn btn-primary btn-md">Открыть главную</button>
+            <button onClick={reset} className="btn btn-danger btn-md">Сбросить тексты</button>
+          </div>
         </div>
       </div>
     </div>

@@ -45,6 +45,14 @@
   * { @apply border-border; }
   html, body { background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }
+  ::selection { background: rgba(104,225,253,.28); color: var(--ink); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 999px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--line-2); }
+  input, textarea, select { transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: rgba(104,225,253,.5) !important; box-shadow: 0 0 0 3px rgba(104,225,253,.14); }
+  button { -webkit-tap-highlight-color: transparent; }
 }
 
 .grid-overlay {
@@ -59,4 +67,37 @@
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(104,225,253,.55); } 70% { box-shadow: 0 0 0 14px rgba(104,225,253,0); } 100% { box-shadow: 0 0 0 0 rgba(104,225,253,0); } }
 .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(104,225,253,.6); animation: pulse 2s infinite; }
 .glass { background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035)); border: 1px solid var(--line); box-shadow: 0 24px 90px rgba(0,0,0,.35); }
-.app-card { background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+.app-card { background: rgba(255,255,255,.05); border: 1px solid var(--line); transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
+
+/* Единая кнопочная система: раньше в кабинетах у каждой кнопки был свой
+   inline-style с чуть разными паддингами/цветами. Теперь один набор классов
+   с согласованными состояниями hover/active/focus/disabled. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: 999px; font-weight: 600; white-space: nowrap; transition: transform .15s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease, opacity .15s ease; cursor: pointer; }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(104,225,253,.28); }
+.btn-lg { padding: .875rem 1.75rem; font-size: .9375rem; }
+.btn-md { padding: .75rem 1.375rem; font-size: .875rem; }
+.btn-sm { padding: .5rem 1rem; font-size: .8125rem; }
+.btn-primary { background: var(--accent); color: var(--bg); box-shadow: 0 10px 28px -8px rgba(104,225,253,.45); }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 14px 32px -8px rgba(104,225,253,.55); }
+.btn-secondary { background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035)); border: 1px solid var(--line); color: var(--ink); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--line-2); background: rgba(255,255,255,.09); }
+.btn-ghost { background: transparent; border: 1px solid var(--line-2); color: var(--ink-2); }
+.btn-ghost:hover:not(:disabled) { border-color: rgba(104,225,253,.35); color: var(--ink); }
+.btn-danger { background: rgba(255,120,140,.12); color: #ff8a98; }
+.btn-danger:hover:not(:disabled) { background: rgba(255,120,140,.2); }
+
+/* Бейджи-статусы (заявки, план тренировки, счётчики) — единый вид пилюли. */
+.badge { display: inline-flex; align-items: center; gap: .375rem; padding: .3rem .75rem; border-radius: 999px; font-size: .75rem; font-weight: 600; line-height: 1; white-space: nowrap; }
+.badge-accent { background: rgba(104,225,253,.13); color: var(--accent); }
+.badge-danger { background: rgba(255,120,140,.14); color: #ff8a98; }
+.badge-neutral { background: rgba(255,255,255,.07); color: var(--ink-3); }
+
+/* Панель/карточка с ощутимой, но не кричащей иерархией. */
+.stat-tile { position: relative; overflow: hidden; }
+.stat-tile::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--secondary-accent)); opacity: .55; }
+
+.field-label { display: block; font-size: .8125rem; font-weight: 500; color: var(--ink-3); letter-spacing: .01em; }
+.field-input { margin-top: .5rem; width: 100%; min-width: 0; border-radius: .875rem; padding: .75rem 1rem; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink); font-size: .9375rem; box-sizing: border-box; }
+.field-input::placeholder { color: var(--ink-4); }

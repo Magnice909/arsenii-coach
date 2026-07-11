@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Apple, CalendarDays, ClipboardList, Dumbbell, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, TrendingUp, X, type LucideIcon } from "lucide-react";
+import { Apple, CalendarDays, CheckCircle2, ClipboardList, Dumbbell, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Send, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
 import { CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
@@ -157,11 +157,11 @@ const ClientDashboard = () => {
   }
 
   if (error) {
-    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Ошибка загрузки</h1><p className="mt-3" style={{ color: "#ff8a98" }}>{error}</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
+    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">Ошибка загрузки</h1><p className="mt-3" style={{ color: "#ff8a98" }}>{error}</p><button onClick={exit} className="btn btn-secondary btn-md glass mt-5">Выйти</button></section></main>;
   }
 
   if (!client) {
-    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">План пока не назначен</h1><p className="mt-3" style={{ color: "var(--ink-2)" }}>Тренер ещё не назначил вам план тренировок в Supabase. Свяжитесь с тренером в Telegram.</p><button onClick={exit} className="mt-5 rounded-full px-5 py-3 glass">Выйти</button></section></main>;
+    return <main className="min-h-screen grid place-items-center px-4" style={{ background: "var(--bg)" }}><section className="glass rounded-[2rem] p-6 max-w-xl"><h1 className="text-3xl font-bold">План пока не назначен</h1><p className="mt-3" style={{ color: "var(--ink-2)" }}>Тренер ещё не назначил вам план тренировок в Supabase. Свяжитесь с тренером в Telegram.</p><button onClick={exit} className="btn btn-secondary btn-md glass mt-5">Выйти</button></section></main>;
   }
 
   const markDone = async () => {
@@ -219,23 +219,22 @@ const ClientDashboard = () => {
       <section className="p-4 pt-6 pb-28 md:p-8 lg:pt-8 lg:pb-8 relative overflow-hidden">
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-          <div><div className="eyebrow">Кабинет клиента</div><h1 className="mt-2 text-4xl md:text-6xl font-extrabold tracking-[-.025em]">Привет, {user?.name || client.name}</h1><p style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || client.telegram}</p></div>
-
+          <div><div className="eyebrow">Кабинет клиента</div><h1 className="mt-2 text-3xl md:text-4xl font-extrabold tracking-[-.02em]">Привет, {user?.name || client.name}</h1><p className="mt-1" style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || client.telegram}</p></div>
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{todayWorkout?.notes || workout?.notes || (periodLoading ? "Загрузка..." : "Тренер пока не назначил активный план на сегодня.")}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className="mt-5 rounded-full px-5 py-3 font-semibold disabled:opacity-55" style={{ background: completedToday ? "rgba(104,225,253,.25)" : "var(--accent)", color: completedToday ? "var(--ink)" : "var(--bg)" }}>{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
+        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={client.weeklyPlan || {}} workouts={workouts} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
                 {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
-        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="inline-flex mt-5 rounded-full px-5 py-3 font-semibold" href="https://t.me/president_h" target="_blank" rel="noreferrer" style={{ background: "var(--accent)", color: "var(--bg)" }}>Написать в Telegram @president_h</a><div className="app-card rounded-3xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
+        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
       </section>
     </main>
   );
 };
 
-const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[2rem] p-5 md:p-6"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-5"><h2 className="text-3xl font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
+const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
 const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) => {
   const [selectedWorkoutId, setSelectedWorkoutId] = useState("all");
   const plans = Array.from(new Map(history.map((item) => [item.workoutId, item.workoutTitle])).entries());
@@ -247,7 +246,7 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
     <div className="space-y-4">
       <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
         Фильтр по плану
-        <select value={selectedWorkoutId} onChange={(event) => setSelectedWorkoutId(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
+        <select value={selectedWorkoutId} onChange={(event) => setSelectedWorkoutId(event.target.value)} className="field-input">
           <option value="all">Все планы</option>
           {plans.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
         </select>
@@ -256,7 +255,7 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
       {!filteredHistory.length && <p style={{ color: "var(--ink-2)" }}>По выбранному плану выполненных тренировок пока нет.</p>}
 
       {filteredHistory.map((item) => (
-        <div key={item.id} className="app-card rounded-3xl p-5">
+        <div key={item.id} className="app-card rounded-2xl p-5">
           <p className="text-sm" style={{ color: "var(--ink-3)" }}>{new Date(item.completedDate).toLocaleDateString("ru-RU")} • {item.dayOfWeek}</p>
           <b className="text-xl mt-2 block">{item.dayWorkoutTitle}</b>
           <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{item.workoutTitle} • {item.exerciseCount} упражнений</p>
@@ -270,7 +269,7 @@ const CompletionHistory = ({ history }: { history: CompletionHistoryItem[] }) =>
 const WeeklySchedule = ({ weeklyPlan, workouts }: { weeklyPlan: Record<string, string>; workouts: Workout[] }) => {
   const trainingDays = Object.keys(weeklyPlan || {}).sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
   if (!trainingDays.length) return <p style={{ color: "var(--ink-2)" }}>План пока пуст. Тренер ещё не добавил тренировочные дни.</p>;
-  return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{trainingDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); const dayWorkout = getDayWorkout(workout, day); return <div key={day} className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{dayWorkout?.title || "Тренировка"}</b>{dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{`${dayWorkout.exercises.length} упражнений`}</p>}</div>; })}</div>;
+  return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{trainingDays.map((day) => { const workout = workouts.find((item) => item.id === weeklyPlan[day]); const dayWorkout = getDayWorkout(workout, day); return <div key={day} className="app-card rounded-2xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p><b className="text-xl mt-2 block">{dayWorkout?.title || "Тренировка"}</b>{dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{`${dayWorkout.exercises.length} упражнений`}</p>}</div>; })}</div>;
 };
 
 const muscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Руки", "Кор", "Другое"];
@@ -324,24 +323,24 @@ const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client
 
   return (
     <div className="mt-6 space-y-5">
-      <div className="app-card rounded-3xl p-5">
+      <div className="app-card rounded-2xl p-5">
         <h3 className="text-2xl font-bold">Силовой прогресс</h3>
         <p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>Добавляй максимальный вес по упражнениям в любое время. Данные сохраняются отдельно от отметки тренировки.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>{muscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<input list="strength-exercises" value={exerciseName} onChange={(event) => setExerciseName(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /><datalist id="strength-exercises">{exerciseOptions.map((exercise) => <option key={exercise} value={exercise} />)}</datalist></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Максимальный вес, кг<input type="number" min="0" step="0.5" value={maxWeight} onChange={(event) => setMaxWeight(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)", boxSizing: "border-box", fontSize: "16px", WebkitAppearance: "none" }} /></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Группа мышц<select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="field-input">{muscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Упражнение<input list="strength-exercises" value={exerciseName} onChange={(event) => setExerciseName(event.target.value)} className="field-input" /><datalist id="strength-exercises">{exerciseOptions.map((exercise) => <option key={exercise} value={exercise} />)}</datalist></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Максимальный вес, кг<input type="number" min="0" step="0.5" value={maxWeight} onChange={(event) => setMaxWeight(event.target.value)} className="field-input" /></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="field-input" style={{ fontSize: "16px", WebkitAppearance: "none" }} /></label>
         </div>
-        <button onClick={addRecord} className="mt-4 rounded-full px-5 py-3 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Добавить показатель</button>
+        <button onClick={addRecord} className="btn btn-primary btn-md mt-4"><Plus size={16} /> Добавить показатель</button>
         {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
       </div>
 
-      <div className="app-card rounded-3xl p-5">
+      <div className="app-card rounded-2xl p-5">
         <h3 className="text-2xl font-bold">Диаграмма силы</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по группе<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по упражнению<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="mt-2 block w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по группе<select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="field-input"><option value="all">Все группы</option>{groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фильтр по упражнению<select value={exerciseFilter} onChange={(event) => setExerciseFilter(event.target.value)} className="field-input"><option value="all">Все упражнения</option>{exercises.map((exercise) => <option key={exercise} value={exercise}>{exercise}</option>)}</select></label>
         </div>
         <StrengthChart records={filteredRecords} />
       </div>
@@ -392,7 +391,7 @@ const ClientCalendarDay = ({ date, entries }: { date: string; entries: CalendarW
             <b>{entry.title}</b>
             <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.exerciseCount} упражнений</p>
           </div>
-          <span className="rounded-full px-3 py-1 text-xs shrink-0" style={{ background: entry.completed ? "rgba(104,225,253,.16)" : "rgba(255,255,255,.08)", color: entry.completed ? "var(--accent)" : "var(--ink-3)" }}>
+          <span className={`badge shrink-0 ${entry.completed ? "badge-accent" : "badge-neutral"}`}>
             {entry.completed ? "Выполнено" : "Запланировано"}
           </span>
         </div>
@@ -401,7 +400,7 @@ const ClientCalendarDay = ({ date, entries }: { date: string; entries: CalendarW
   );
 };
 
-const Metric = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-2xl mt-2 block">{value}</b></div>;
-const Info = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-3xl p-5"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-xl mt-2 block">{value}</b></div>;
+const Metric = ({ title, value }: { title: string; value: string }) => <div className="stat-tile glass rounded-3xl p-5"><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b></div>;
+const Info = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-2xl p-5"><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-lg mt-2 block">{value}</b></div>;
 
 export default ClientDashboard;

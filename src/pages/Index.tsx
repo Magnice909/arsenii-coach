@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import IntroScreen from "../components/IntroScreen";
 import MultiStepForm from "../components/MultiStepForm";
@@ -24,6 +24,7 @@ const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
   const [settings, setSettings] = useState(getSiteSettings());
   const [photoFailed, setPhotoFailed] = useState(false);
+  const photoLoadedRef = useRef(false);
   const handleIntroComplete = useCallback(() => setShowIntro(false), []);
   const scrollToApply = () => document.getElementById("apply")?.scrollIntoView({ behavior: "smooth" });
 
@@ -34,8 +35,18 @@ const Index = () => {
       .catch(() => { /* остаёмся на локальных дефолтах, если запрос не удался */ });
   }, []);
 
-  // Сбрасываем флаг сбоя, если фото поменялось (например, тренер загрузил новое).
-  useEffect(() => { setPhotoFailed(false); }, [settings.photoDataUrl]);
+  // onError у <img> ловит не все сбои — на некоторых сетях/браузерах запрос к
+  // недоступной ссылке просто зависает без явной ошибки, и фото не появляется,
+  // но событие error тоже не срабатывает. Подстраховка: если через 6 секунд
+  // фото так и не подтвердило загрузку, считаем это сбоем и показываем
+  // плейсхолдер, а не пустую карточку.
+  useEffect(() => {
+    setPhotoFailed(false);
+    photoLoadedRef.current = false;
+    if (!settings.photoDataUrl) return;
+    const timer = setTimeout(() => { if (!photoLoadedRef.current) setPhotoFailed(true); }, 6000);
+    return () => clearTimeout(timer);
+  }, [settings.photoDataUrl]);
 
   return (
     <>
@@ -123,7 +134,7 @@ const Index = () => {
             <ScrollReveal>
               <HoloCard className="rounded-[2rem] glass min-h-[500px]" intensity={5}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
-                {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
+                {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onLoad={() => { photoLoadedRef.current = true; }} onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
               </HoloCard>
             </ScrollReveal>
             <ScrollReveal delay={0.1}>

@@ -261,7 +261,7 @@ export const fetchClientData = async (userId: string) => {
 
   const [{ data: planRows, error: plansError }, { data: periodRows, error: periodsError }] = await Promise.all([
     supabase.from("weekly_plans").select("*").eq("client_id", clientRow.id),
-    supabase.from("plan_periods").select("*").eq("client_id", clientRow.id),
+    supabase.from("plan_periods").select("*").eq("client_id", clientRow.id).order("created_at", { ascending: false }),
   ]);
   if (plansError) throw plansError;
   if (periodsError) throw periodsError;
@@ -271,6 +271,11 @@ export const fetchClientData = async (userId: string) => {
   // назначал план только через «Активный план (7 дней)» (не дублируя его же
   // в старом «Шаблоне тренировок»), клиент не видел свою тренировку вообще:
   // ни на вкладке «Сегодня», ни в календаре, ни в прогрессе.
+  // Периоды отсортированы по created_at (новые первыми), поэтому если у
+  // клиента остались старые перекрывающиеся периоды на сегодня — find()
+  // берёт самый недавно созданный, как и fetchCurrentPlanPeriod. Раньше
+  // порядок не задавался, и эти две функции могли молча выбрать разные
+  // периоды для одного и того же клиента.
   const periods = (periodRows || []).map(dbPlanPeriodToPeriod);
   const todayIso = toISODate(new Date());
   const currentPeriod = periods.find((period) => period.startDate <= todayIso && todayIso <= period.endDate);

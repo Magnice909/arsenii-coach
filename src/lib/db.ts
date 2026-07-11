@@ -103,9 +103,20 @@ export const fetchCoachData = async (coachId: string) => {
 
   const clientIds = (clientRows || []).map((row) => row.id);
   const { start, end } = getCurrentWeekRange();
-  const { data: completionRows } = clientIds.length
-    ? await supabase.from("workout_completions").select("client_id, day_of_week, workout_id").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
-    : { data: [] as any[] };
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [{ data: completionRows }, activePeriods] = await Promise.all([
+    clientIds.length
+      ? supabase.from("workout_completions").select("client_id, day_of_week, workout_id").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
+      : Promise.resolve({ data: [] as any[] }),
+    fetchPlanPeriodsInRange(clientIds, todayIso, todayIso),
+  ]);
+
+  // Активный 7-дневный план (plan_periods) — новый источник истины о том, что
+  // назначено клиенту прямо сейчас. Раньше прогресс и «текущий план» на этой
+  // странице считались только по старым weekly_plans/next_plan_id, из-за чего
+  // тренер видел не тот план (и не тот прогресс), что реально видит клиент.
+  const activeWorkoutIdByClient: Record<string, string> = {};
+  for (const period of activePeriods) activeWorkoutIdByClient[period.clientId] = period.workoutId;
 
   const completedByClient: Record<string, { day_of_week: string; workout_id: string }[]> = {};
   for (const row of completionRows || []) {
@@ -114,10 +125,14 @@ export const fetchCoachData = async (coachId: string) => {
   }
 
   const clients = (clientRows || []).map((row) => {
+    const activeWorkout = workouts.find((workout) => workout.id === activeWorkoutIdByClient[row.id]);
     const dueNextWorkout = isNextPlanDue(row.next_plan_week_start) ? workouts.find((workout) => workout.id === row.next_plan_id) : undefined;
-    const weeklyPlan = dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : (planByClient[row.id] || {});
+    const weeklyPlan = activeWorkout ? buildWeeklyPlanFromWorkout(activeWorkout) : dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : (planByClient[row.id] || {});
     const client = dbClientToClient(row, workouts, weeklyPlan);
-    if (dueNextWorkout) {
+    if (activeWorkout) {
+      client.assignedWorkoutId = activeWorkout.id;
+      client.plan = activeWorkout.title;
+    } else if (dueNextWorkout) {
       client.assignedWorkoutId = dueNextWorkout.id;
       client.plan = dueNextWorkout.title;
     }
@@ -227,10 +242,27 @@ export const fetchClientData = async (userId: string) => {
   if (clientError) throw clientError;
   if (!clientRow) return null;
 
-  const { data: planRows, error: plansError } = await supabase.from("weekly_plans").select("*").eq("client_id", clientRow.id);
+  const [{ data: planRows, error: plansError }, { data: periodRows, error: periodsError }] = await Promise.all([
+    supabase.from("weekly_plans").select("*").eq("client_id", clientRow.id),
+    supabase.from("plan_periods").select("*").eq("client_id", clientRow.id),
+  ]);
   if (plansError) throw plansError;
+  if (periodsError) throw periodsError;
 
-  const workoutIds = [...new Set([...(planRows || []).map((row) => row.workout_id), clientRow.next_plan_id].filter(Boolean))];
+  // Периоды (plan_periods) — новый источник активного плана клиента. Раньше
+  // их workout_id не попадал в список загружаемых тренировок, и если тренер
+  // назначал план только через «Активный план (7 дней)» (не дублируя его же
+  // в старом «Шаблоне тренировок»), клиент не видел свою тренировку вообще:
+  // ни на вкладке «Сегодня», ни в календаре, ни в прогрессе.
+  const periods = (periodRows || []).map(dbPlanPeriodToPeriod);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const currentPeriod = periods.find((period) => period.startDate <= todayIso && todayIso <= period.endDate);
+
+  const workoutIds = [...new Set([
+    ...(planRows || []).map((row) => row.workout_id),
+    ...periods.map((period) => period.workoutId),
+    clientRow.next_plan_id,
+  ].filter(Boolean))];
   const { data: workoutRows, error: workoutsError } = workoutIds.length
     ? await supabase.from("workouts").select("*").in("id", workoutIds)
     : { data: [], error: null } as any;
@@ -249,10 +281,14 @@ export const fetchClientData = async (userId: string) => {
     .gte("completed_date", start)
     .lte("completed_date", end);
 
+  const activeWorkout = currentPeriod ? workouts.find((item: Workout) => item.id === currentPeriod.workoutId) : undefined;
   const dueNextWorkout = isNextPlanDue(clientRow.next_plan_week_start) ? workouts.find((item: Workout) => item.id === clientRow.next_plan_id) : undefined;
-  const effectiveWeeklyPlan = dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : weeklyPlan;
+  const effectiveWeeklyPlan = activeWorkout ? buildWeeklyPlanFromWorkout(activeWorkout) : dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : weeklyPlan;
   const client = dbClientToClient(clientRow, workouts, effectiveWeeklyPlan);
-  if (dueNextWorkout) {
+  if (activeWorkout) {
+    client.assignedWorkoutId = activeWorkout.id;
+    client.plan = activeWorkout.title;
+  } else if (dueNextWorkout) {
     client.assignedWorkoutId = dueNextWorkout.id;
     client.plan = dueNextWorkout.title;
   }

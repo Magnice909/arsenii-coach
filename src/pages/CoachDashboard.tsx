@@ -75,6 +75,31 @@ const CoachDashboard = () => {
     }
   };
 
+  const loadApplications = async () => {
+    if (!isSupabaseConfigured) {
+      try {
+        setApplications(JSON.parse(localStorage.getItem("arseniiCoachApplications") || "[]"));
+      } catch {
+        setApplications([]);
+      }
+      return;
+    }
+
+    setApplicationsStatus("Загружаем заявки...");
+    const { data, error } = await supabase
+      .from("applications")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setApplicationsStatus("Не удалось загрузить заявки. Проверьте таблицу applications и права доступа.");
+      return;
+    }
+
+    setApplications((data || []) as Application[]);
+    setApplicationsStatus("");
+  };
+
   useEffect(() => { loadAllData(); }, [user?.id]);
   useEffect(() => { if (tab === "applications") loadApplications(); }, [tab]);
   useEffect(() => {
@@ -110,31 +135,6 @@ const CoachDashboard = () => {
 
   const saveClients = (next: Client[]) => { updateClients(next); setClients(next); };
   const saveWorkouts = (next: Workout[]) => { updateWorkouts(next); setWorkouts(next); };
-
-  const loadApplications = async () => {
-    if (!isSupabaseConfigured) {
-      try {
-        setApplications(JSON.parse(localStorage.getItem("arseniiCoachApplications") || "[]"));
-      } catch {
-        setApplications([]);
-      }
-      return;
-    }
-
-    setApplicationsStatus("Загружаем заявки...");
-    const { data, error } = await supabase
-      .from("applications")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setApplicationsStatus("Не удалось загрузить заявки. Проверьте таблицу applications и права доступа.");
-      return;
-    }
-
-    setApplications((data || []) as Application[]);
-    setApplicationsStatus("");
-  };
 
 
   const updateClient = (patch: Partial<Client>) => {
@@ -484,7 +484,6 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
 
 const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full max-w-full min-w-0 rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)", boxSizing: "border-box", fontSize: "16px" }} /></label>;
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="block text-sm" style={{ color: "var(--ink-3)" }}>{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }} /></label>;
-const ReadOnlyInput = ({ label, value }: { label: string; value: string }) => <Field label={label} value={value} onChange={() => {}} />;
 
 const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }: { client: Client; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
   const [clientPassword, setClientPassword] = useState("");
@@ -760,35 +759,6 @@ const CoachStrengthChart = ({ records }: { records: StrengthRecord[] }) => {
 };
 
 const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-
-const WeeklyPlanEditor = ({ client, workouts, onChange }: { client: Client; workouts: Workout[]; onChange: (patch: Partial<Client>) => void }) => {
-  const plan = client.weeklyPlan || {};
-  const setDay = (day: string, workoutId: string) => {
-    const next = { ...plan };
-    if (!workoutId) delete next[day];
-    else next[day] = workoutId;
-    const firstWorkoutId = Object.values(next)[0] || client.assignedWorkoutId;
-    const firstWorkout = workouts.find((workout) => workout.id === firstWorkoutId);
-    onChange({ weeklyPlan: next, assignedWorkoutId: firstWorkoutId, plan: firstWorkout?.title || client.plan });
-  };
-  return (
-    <div className="app-card rounded-3xl p-4">
-      <h3 className="text-xl font-bold">План на неделю</h3>
-      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Можно назначить сразу несколько тренировок на разные дни недели.</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {weekDays.map((day) => (
-          <label key={day} className="block text-sm" style={{ color: "var(--ink-3)" }}>
-            {day}
-            <select value={plan[day] || ""} onChange={(event) => setDay(day, event.target.value)} className="mt-2 w-full rounded-xl px-4 py-3" style={{ background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" }}>
-              <option value="">Отдых</option>
-              {workouts.map((workout) => <option key={workout.id} value={workout.id}>{workout.title}</option>)}
-            </select>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: (exercises: string[]) => void }) => {
   const updateExercise = (index: number, value: string) => onChange(exercises.map((exercise, i) => i === index ? value : exercise));

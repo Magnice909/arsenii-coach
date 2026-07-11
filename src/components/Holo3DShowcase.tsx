@@ -4,6 +4,62 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
+/** Текстовая метка-«таблетка» на канвасе, натянутая на THREE.Sprite.
+ *  Спрайт в three.js всегда развёрнут на камеру независимо от вращения
+ *  родителя — в отличие от текста на гранях куба (две прошлые попытки),
+ *  здесь текст физически не может оказаться перевёрнутым или нечитаемым
+ *  ни в одной фазе вращения сцены. */
+const makeLabelSprite = (text: string, borderColor: string) => {
+  const fontSize = 46;
+  const paddingX = 34;
+  const measureCanvas = document.createElement("canvas");
+  const measureCtx = measureCanvas.getContext("2d")!;
+  measureCtx.font = `700 ${fontSize}px Inter, sans-serif`;
+  const textWidth = measureCtx.measureText(text).width;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(textWidth + paddingX * 2);
+  canvas.height = Math.ceil(fontSize * 2.1);
+  const ctx = canvas.getContext("2d")!;
+  const w = canvas.width;
+  const h = canvas.height;
+  const radius = h / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(radius, 2);
+  ctx.arcTo(w, 2, w, h - 2, radius);
+  ctx.arcTo(w, h - 2, 0, h - 2, radius);
+  ctx.arcTo(0, h - 2, 0, 2, radius);
+  ctx.arcTo(0, 2, w, 2, radius);
+  ctx.closePath();
+  const bgGradient = ctx.createLinearGradient(0, 0, w, 0);
+  bgGradient.addColorStop(0, "rgba(10,18,28,.55)");
+  bgGradient.addColorStop(1, "rgba(10,18,28,.4)");
+  ctx.fillStyle = bgGradient;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = borderColor;
+  ctx.stroke();
+
+  ctx.font = `700 ${fontSize}px Inter, sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  // Без собственного canvas-свечения текста: bloom-постобработка сцены уже
+  // подсвечивает яркие пиксели, и двойное свечение (тень здесь + bloom
+  // поверх) выжигало текст в сплошное белое пятно, особенно у меток
+  // покрупнее на переднем плане.
+  ctx.fillStyle = "#dcf1ff";
+  ctx.fillText(text, w / 2, h / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(material);
+  const spriteHeight = 1.05;
+  sprite.scale.set(spriteHeight * (w / h), spriteHeight, 1);
+  return { sprite, material, texture };
+};
+
 /** Мягкая круглая точка на канвасе — текстура для частиц. Без внешнего файла:
  *  проще держать в бандле и не тянуть отдельный ассет ради одной картинки. */
 const makeParticleTexture = () => {
@@ -21,11 +77,12 @@ const makeParticleTexture = () => {
   return new THREE.CanvasTexture(canvas);
 };
 
-/** Крупная витринная 3D-сцена на WebGL: гранёный кристалл, три орбитальных
- *  кольца на разных осях, звёздное поле частиц и bloom-постобработка для
- *  свечения. Занимает собственную полноширинную секцию (не делит место с
- *  текстом), чтобы можно было сделать её действительно большой и не
- *  беспокоиться о наложении на заголовок/форму. */
+/** Крупная витринная 3D-сцена на WebGL: гранёный кристалл, вокруг него по
+ *  своим орбитам летают текстовые метки «План/Питание/Контроль», звёздное
+ *  поле частиц и bloom-постобработка для свечения. Занимает собственную
+ *  полноширинную секцию (не делит место с текстом), чтобы можно было
+ *  сделать её действительно большой и не беспокоиться о наложении на
+ *  заголовок/форму. */
 const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -95,18 +152,18 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
     const coreLight = new THREE.PointLight(accent, 22, 11);
     group.add(coreLight);
 
-    const ringConfigs = [
-      { radius: 3.5, tube: 0.018, color: accent, tiltX: 1.15, tiltZ: 0.2, speed: 0.5 },
-      { radius: 4.05, tube: 0.014, color: violet, tiltX: 0.4, tiltZ: 1.3, speed: -0.35 },
-      { radius: 4.6, tube: 0.011, color: pink, tiltX: 1.42, tiltZ: -0.6, speed: 0.28 },
+    // Подписи из убранных мини-карточек «План/Питание/Контроль» — не на
+    // гранях объекта (там текст неизбежно уходит на ребро и искажается),
+    // а спрайтами, летающими по своей орбите вокруг кристалла.
+    const labelConfigs = [
+      { text: "План", color: "rgba(104,225,253,.85)", radius: 4.3, speed: 0.3, phase: 0 },
+      { text: "Питание", color: "rgba(139,92,246,.85)", radius: 4.6, speed: 0.3, phase: (Math.PI * 2) / 3 },
+      { text: "Контроль", color: "rgba(255,138,216,.85)", radius: 4.45, speed: 0.3, phase: (Math.PI * 4) / 3 },
     ];
-    const rings = ringConfigs.map(({ radius, tube, color, tiltX, tiltZ }) => {
-      const ringGeo = new THREE.TorusGeometry(radius, tube, 16, 128);
-      const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.set(tiltX, 0, tiltZ);
-      group.add(ring);
-      return ring;
+    const labels = labelConfigs.map(({ text, color }) => {
+      const { sprite, material: labelMaterial, texture: labelTexture } = makeLabelSprite(text, color);
+      group.add(sprite);
+      return { sprite, material: labelMaterial, texture: labelTexture };
     });
 
     const particleCount = 320;
@@ -128,7 +185,7 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.95, 0.6, 0.15);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.8, 0.6, 0.3);
     composer.addPass(bloomPass);
 
     // Лёгкий параллакс за курсором мыши по всей странице — не только над
@@ -159,7 +216,11 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
         group.rotation.y += (targetRotY + autoY - group.rotation.y) * 0.04;
         group.rotation.x += (targetRotX - 0.15 - group.rotation.x) * 0.04;
         group.position.y = Math.sin(elapsed * 0.6) * 0.18;
-        rings.forEach((ring, index) => { ring.rotation.z += ringConfigs[index].speed * 0.006; });
+        labels.forEach(({ sprite }, index) => {
+          const { radius, speed, phase } = labelConfigs[index];
+          const angle = elapsed * speed + phase;
+          sprite.position.set(Math.cos(angle) * radius, Math.sin(angle * 0.6 + index) * 1.2, Math.sin(angle) * radius);
+        });
         particles.rotation.y = elapsed * 0.02;
       }
       composer.render();
@@ -169,10 +230,17 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
     const handleResize = () => {
       width = container.clientWidth;
       height = container.clientHeight;
-      camera.aspect = width / height;
+      const aspect = width / height;
+      camera.aspect = aspect;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
       composer.setSize(width, height);
+      // На узких (портретных) контейнерах горизонтальный угол обзора
+      // меньше при том же вертикальном FOV, и орбиты меток с широким
+      // радиусом упирались в край канваса и обрезались. Сжимаем всю
+      // группу (кристалл + метки + кольца орбит), когда контейнер уже,
+      // чем широк, — так орбиты остаются в кадре при любой ширине.
+      group.scale.setScalar(aspect < 1.3 ? 0.62 : 1);
     };
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
@@ -187,7 +255,7 @@ const Holo3DShowcase = ({ className = "" }: { className?: string }) => {
       material.dispose();
       glowMaterial.dispose();
       (wireframe.material as THREE.Material).dispose();
-      rings.forEach((ring) => { ring.geometry.dispose(); (ring.material as THREE.Material).dispose(); });
+      labels.forEach(({ material: labelMaterial, texture: labelTexture }) => { labelMaterial.dispose(); labelTexture.dispose(); });
       particleGeometry.dispose();
       particleMaterial.dispose();
       particleTexture.dispose();

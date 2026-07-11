@@ -259,23 +259,16 @@ const CoachDashboard = () => {
     }
   };
 
-  const assignWorkoutToClients = async (workout: Workout, clientIds: string[]) => {
-    if (!clientIds.length) return;
-    const weeklyPlan = workout.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, workout.id])) : {};
-    const nextClients = clients.map((client) => clientIds.includes(client.id) ? { ...client, assignedWorkoutId: workout.id, weeklyPlan, plan: workout.title } : client);
-    saveClients(nextClients);
-    if (isSupabaseConfigured && user?.id) {
-      try {
-        const assignedClients = nextClients.filter((item) => clientIds.includes(item.id));
-        for (const client of assignedClients) {
-          await updateClientRecord(user.id, client);
-          await replaceWeeklyPlanRecord(user.id, client.id, client.weeklyPlan || {});
-        }
-        await sendPushToUsers(assignedClients.map((client) => client.userId || "").filter(Boolean), "Новый план тренировок", `Арсений назначил план ${workout.title}`, "/#/client");
-        setSyncStatus("План назначен выбранным клиентам");
-      } catch (error) {
-        setSyncStatus(getErrorMessage(error, "Не удалось назначить план"));
-      }
+  const assignWorkoutToClients = async (workout: Workout, clientIds: string[], startDate: string) => {
+    if (!clientIds.length || !isSupabaseConfigured || !user?.id) return;
+    try {
+      await Promise.all(clientIds.map((clientId) => createPlanPeriod(clientId, workout.id, startDate)));
+      const assignedClients = clients.filter((item) => clientIds.includes(item.id));
+      await sendPushToUsers(assignedClients.map((client) => client.userId || "").filter(Boolean), "Новый план тренировок", `Арсений назначил план ${workout.title}`, "/#/client");
+      setSyncStatus("План назначен выбранным клиентам");
+      await loadAllData();
+    } catch (error) {
+      setSyncStatus(getErrorMessage(error, "Не удалось назначить план"));
     }
   };
 
@@ -532,12 +525,12 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [showClientPassword, setShowClientPassword] = useState(false);
-  const [assignedPlanDraft, setAssignedPlanDraft] = useState(client.assignedWorkoutId || "");
   const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
   const [periodLoading, setPeriodLoading] = useState(true);
   const [newPlanWorkoutId, setNewPlanWorkoutId] = useState(workouts[0]?.id || "");
   const [newPlanStartDate, setNewPlanStartDate] = useState(toISODate(new Date()));
-  const [alsoAssignNextWeek, setAlsoAssignNextWeek] = useState(false);
+  const [week2Mode, setWeek2Mode] = useState<"none" | "same" | "different">("none");
+  const [week2WorkoutId, setWeek2WorkoutId] = useState(workouts[0]?.id || "");
   const [planActionStatus, setPlanActionStatus] = useState("");
   const [isSavingPeriod, setIsSavingPeriod] = useState(false);
 
@@ -547,10 +540,6 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
   };
 
   const passwordStorageKey = (clientId: string) => `arseniiCoachTempPassword:${clientId}`;
-
-  useEffect(() => {
-    setAssignedPlanDraft(client.assignedWorkoutId || "");
-  }, [client.id, client.assignedWorkoutId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -584,22 +573,18 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
     }
   }, [client.id]);
 
-  const saveWeeklyTemplate = () => {
-    const workout = workouts.find((item) => item.id === assignedPlanDraft);
-    const weeklyPlan = workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, assignedPlanDraft])) : {};
-    onChange({ assignedWorkoutId: assignedPlanDraft, weeklyPlan, plan: workout?.title || "" });
-  };
-
   const handleCreatePeriod = async () => {
     setPlanActionStatus("");
     if (!newPlanWorkoutId) { setPlanActionStatus("Выбери тренировку для плана"); return; }
+    if (week2Mode === "different" && !week2WorkoutId) { setPlanActionStatus("Выбери тренировку для второй недели"); return; }
     setIsSavingPeriod(true);
     try {
       const period = await createPlanPeriod(client.id, newPlanWorkoutId, newPlanStartDate);
-      let status = `План создан на ${period.startDate} – ${period.endDate}`;
-      if (alsoAssignNextWeek) {
-        const nextPeriod = await createPlanPeriod(client.id, newPlanWorkoutId, addDaysToISO(period.endDate, 1));
-        status += `, и на следующую неделю ${nextPeriod.startDate} – ${nextPeriod.endDate}`;
+      let status = `Неделя 1 (${period.startDate} – ${period.endDate}): ${workouts.find((w) => w.id === newPlanWorkoutId)?.title || ""}`;
+      if (week2Mode !== "none") {
+        const week2WorkoutIdToUse = week2Mode === "same" ? newPlanWorkoutId : week2WorkoutId;
+        const nextPeriod = await createPlanPeriod(client.id, week2WorkoutIdToUse, addDaysToISO(period.endDate, 1));
+        status += `. Неделя 2 (${nextPeriod.startDate} – ${nextPeriod.endDate}): ${workouts.find((w) => w.id === week2WorkoutIdToUse)?.title || ""}`;
       }
       setPlanActionStatus(status);
       setCurrentPeriod(await fetchCurrentPlanPeriod(client.id));
@@ -698,21 +683,8 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
       </div>
 
       <div className="app-card rounded-2xl p-4">
-        <h3 className="text-xl font-bold">Шаблон тренировок по дням недели</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Это «рецепт» плана — какая тренировка идёт в какой день недели. Сам план становится активным только когда ты назначишь ему конкретную дату начала ниже.</p>
-        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-          Шаблон тренировок
-          <select value={assignedPlanDraft} onChange={(e) => setAssignedPlanDraft(e.target.value)} className="field-input">
-            <option value="">План не выбран</option>
-            {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={saveWeeklyTemplate} className="btn btn-primary btn-md mt-4">Сохранить шаблон</button>
-      </div>
-
-      <div className="app-card rounded-2xl p-4">
-        <h3 className="text-xl font-bold">Активный план (7 дней)</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>План действует ровно 7 дней с выбранной даты. По окончании недели календарь автоматически перестаёт его показывать — никаких ручных переключений не нужно.</p>
+        <h3 className="text-xl font-bold">Активный план</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Каждый период действует ровно 7 дней. По окончании недели календарь и вкладка «Сегодня» у клиента автоматически перестают его показывать.</p>
 
         {periodLoading ? (
           <p className="text-sm" style={{ color: "var(--ink-3)" }}>Загружаем текущий план...</p>
@@ -732,19 +704,31 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
         <p className="text-sm font-semibold mb-2" style={{ color: "var(--ink-2)" }}>Назначить новый план</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-            Тренировка
+            Тренировка, неделя 1
             <select value={newPlanWorkoutId} onChange={(e) => setNewPlanWorkoutId(e.target.value)} className="field-input">
               {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
             </select>
           </label>
-          <Field label="Дата начала (план будет на 7 дней от неё)" type="date" value={newPlanStartDate} onChange={setNewPlanStartDate} />
+          <Field label="Дата начала недели 1" type="date" value={newPlanStartDate} onChange={setNewPlanStartDate} />
         </div>
-        <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer" style={{ color: "var(--ink-2)" }}>
-          <input type="checkbox" checked={alsoAssignNextWeek} onChange={(e) => setAlsoAssignNextWeek(e.target.checked)} />
-          Сразу занять и следующую неделю тем же планом
+        <label className="block text-sm mt-4" style={{ color: "var(--ink-3)" }}>
+          Неделя 2
+          <select value={week2Mode} onChange={(e) => setWeek2Mode(e.target.value as typeof week2Mode)} className="field-input">
+            <option value="none">Не назначать</option>
+            <option value="same">Тот же план, что на неделе 1</option>
+            <option value="different">Другой план</option>
+          </select>
         </label>
+        {week2Mode === "different" && (
+          <label className="block text-sm mt-3" style={{ color: "var(--ink-3)" }}>
+            Тренировка, неделя 2
+            <select value={week2WorkoutId} onChange={(e) => setWeek2WorkoutId(e.target.value)} className="field-input">
+              {workouts.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+            </select>
+          </label>
+        )}
         <button type="button" onClick={handleCreatePeriod} disabled={isSavingPeriod} className="btn btn-primary btn-md mt-4">
-          {isSavingPeriod ? "Создаём..." : alsoAssignNextWeek ? "Назначить план на 2 недели" : "Назначить план на 7 дней"}
+          {isSavingPeriod ? "Создаём..." : week2Mode === "none" ? "Назначить план" : "Назначить план на 2 недели"}
         </button>
         {planActionStatus && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{planActionStatus}</p>}
       </div>
@@ -836,10 +820,12 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[]) => Promise<void> | void }) => {
+const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
   const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
+  const [bulkStartDate, setBulkStartDate] = useState(toISODate(new Date()));
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
 
   useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
 
@@ -900,10 +886,15 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
       alert("Выбери хотя бы одного клиента");
       return;
     }
-    onChange(draft);
-    await onBulkAssign(draft, bulkClientIds);
-    setBulkClientIds([]);
-    setStatus("План назначен выбранным клиентам.");
+    setIsBulkAssigning(true);
+    try {
+      onChange(draft);
+      await onBulkAssign(draft, bulkClientIds, bulkStartDate);
+      setBulkClientIds([]);
+      setStatus(`План назначен ${bulkClientIds.length > 1 ? `${bulkClientIds.length} клиентам` : "клиенту"} с ${bulkStartDate}.`);
+    } finally {
+      setIsBulkAssigning(false);
+    }
   };
 
   return (
@@ -947,7 +938,7 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
 
       <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Массовое назначение</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери клиентов, которым нужно назначить этот план сразу.</p>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Выбери клиентов и дату начала — каждому создастся 7-дневный активный план с этой тренировкой.</p>
         {!clients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Клиентов пока нет.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {clients.map((client) => (
@@ -957,7 +948,8 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
             </label>
           ))}
         </div>
-        <button type="button" disabled={!bulkClientIds.length} onClick={handleBulkAssign} className="btn btn-primary btn-md mt-4">Назначить выбранным</button>
+        <Field label="Дата начала" type="date" value={bulkStartDate} onChange={setBulkStartDate} />
+        <button type="button" disabled={!bulkClientIds.length || isBulkAssigning} onClick={handleBulkAssign} className="btn btn-primary btn-md mt-4">{isBulkAssigning ? "Назначаем..." : "Назначить выбранным"}</button>
       </div>
 
       <div className="sticky bottom-4 z-20 glass rounded-3xl p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">

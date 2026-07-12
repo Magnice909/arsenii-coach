@@ -132,7 +132,7 @@ const Index = () => {
                   внутри, оба position: absolute) фактически схлопывались до
                   0px высоты и были невидимы, хотя сама ссылка на фото была
                   рабочей. */}
-              <HoloCard className="rounded-[2rem] glass h-[500px]" intensity={5}>
+              <HoloCard className="rounded-[2rem] glass h-[500px]" flat>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
                 {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onLoad={() => { photoLoadedRef.current = true; }} onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
               </HoloCard>

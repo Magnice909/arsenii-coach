@@ -37,6 +37,7 @@ export type CalendarWorkoutEntry = {
   workoutId: string;
   title: string;
   exerciseCount: number;
+  exercises: string[];
   completed: boolean;
 };
 
@@ -97,6 +98,7 @@ export const buildCalendarEntries = async (
         workoutId: period.workoutId,
         title: dayWorkout.title,
         exerciseCount: dayWorkout.exercises?.length || 0,
+        exercises: dayWorkout.exercises || [],
         completed: completedSet.has(`${client.id}::${iso}::${period.workoutId}`),
       });
     }

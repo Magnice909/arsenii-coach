@@ -317,6 +317,7 @@ const WeeklySchedule = ({ weeklyPlan, workouts, currentPeriod, history }: { week
       <div className="flex items-center justify-between"><p className="text-sm" style={{ color: "var(--ink-3)" }}>{day}</p>{isDone && <span className="badge badge-accent">Выполнено</span>}</div>
       <b className="text-xl mt-2 block">{dayWorkout?.title || "Тренировка"}</b>
       {dayWorkout && <p className="text-sm mt-2" style={{ color: "var(--ink-2)" }}>{`${dayWorkout.exercises.length} упражнений`}</p>}
+      {!!dayWorkout?.exercises.length && <ul className="mt-3 space-y-1.5">{dayWorkout.exercises.map((exercise, index) => <li key={`${index}-${exercise}`} className="text-sm rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,.04)", color: "var(--ink-2)" }}>{exercise}</li>)}</ul>}
     </div>;
   })}</div>;
 };
@@ -441,14 +442,17 @@ const ClientCalendarDay = ({ date, entries }: { date: string; entries: CalendarW
     <div className="space-y-2">
       <p className="text-sm mb-1" style={{ color: "var(--ink-3)" }}>{new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" })}</p>
       {entries.map((entry) => (
-        <div key={entry.workoutId} className="app-card rounded-2xl p-3 flex items-center justify-between gap-3">
-          <div>
-            <b>{entry.title}</b>
-            <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.exerciseCount} упражнений</p>
+        <div key={entry.workoutId} className="app-card rounded-2xl p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <b>{entry.title}</b>
+              <p className="text-sm mt-0.5" style={{ color: "var(--ink-2)" }}>{entry.exerciseCount} упражнений</p>
+            </div>
+            <span className={`badge shrink-0 ${entry.completed ? "badge-accent" : "badge-neutral"}`}>
+              {entry.completed ? "Выполнено" : "Запланировано"}
+            </span>
           </div>
-          <span className={`badge shrink-0 ${entry.completed ? "badge-accent" : "badge-neutral"}`}>
-            {entry.completed ? "Выполнено" : "Запланировано"}
-          </span>
+          {!!entry.exercises.length && <ul className="mt-2.5 space-y-1.5">{entry.exercises.map((exercise, index) => <li key={`${index}-${exercise}`} className="text-sm rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,.04)", color: "var(--ink-2)" }}>{exercise}</li>)}</ul>}
         </div>
       ))}
     </div>

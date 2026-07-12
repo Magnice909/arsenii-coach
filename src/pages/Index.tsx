@@ -102,7 +102,7 @@ const Index = () => {
             </ScrollReveal>
           </section>
 
-          <section id="included" className="mx-auto max-w-6xl px-4 py-24 scroll-mt-28">
+          <section id="included" className="mx-auto max-w-6xl px-4 py-24">
             <ScrollReveal className="mb-10">
               <div className="eyebrow">Что входит в работу</div>
               <h2 className="mt-4 text-5xl md:text-7xl font-extrabold tracking-[-.02em]">Что входит.</h2>
@@ -145,7 +145,7 @@ const Index = () => {
             </ScrollReveal>
           </section>
 
-          <section id="results" className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-24 md:grid-cols-[.9fr_1.1fr] md:items-center scroll-mt-28">
+          <section id="results" className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-24 md:grid-cols-[.9fr_1.1fr] md:items-center">
             <FloatingAppPreview />
             <ScrollReveal delay={0.1}>
               <div className="eyebrow">Система результата</div>

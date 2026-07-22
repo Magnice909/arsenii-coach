@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, Copy, Download, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Scale, Search, Send, Settings, StickyNote, Tag, Trash2, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, CalendarDays, Check, CheckCircle2, Copy, Download, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Scale, Search, Send, Settings, StickyNote, Tag, Trash2, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -66,6 +66,7 @@ const coachNavGroups: NavGroup[] = [
   ] },
   { label: "Контент", items: [
     { id: "workouts", label: "Планы тренировок", icon: Dumbbell },
+    { id: "exercises", label: "Библиотека упражнений", icon: BookOpen },
   ] },
   { label: "Сервис", items: [
     { id: "messages", label: "Сообщения", icon: Bell },
@@ -104,6 +105,7 @@ const CoachDashboard = () => {
   const [clientTagFilter, setClientTagFilter] = useState("");
   const [workoutSearch, setWorkoutSearch] = useState("");
   const [workoutTemplateFilter, setWorkoutTemplateFilter] = useState(false);
+  const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseLibraryItem[]>([]);
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityBucket[]>([]);
   const [broadcastText, setBroadcastText] = useState("");
   const [broadcastClientIds, setBroadcastClientIds] = useState<string[]>([]);
@@ -192,6 +194,32 @@ const CoachDashboard = () => {
   // как тренер откроет вкладку «Заявки» хотя бы раз.
   useEffect(() => { loadApplications(); }, [user?.id, refreshKey]);
   useEffect(() => { if (tab === "applications") loadApplications(); }, [tab]);
+  // Библиотека упражнений теперь общая: своя вкладка в меню + подсказка при
+  // сборке плана в конструкторе, поэтому загружаем один раз на уровне
+  // кабинета, а не отдельно внутри конструктора плана.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user?.id) return;
+    fetchExerciseLibrary(user.id).then(setExerciseLibrary).catch(() => {});
+  }, [user?.id, refreshKey]);
+
+  const addExerciseLibraryItem = async (label: string, muscleGroup: string) => {
+    if (!isSupabaseConfigured || !user?.id) return;
+    try {
+      const item = await createExerciseLibraryItem(user.id, label, muscleGroup || undefined);
+      setExerciseLibrary((current) => [...current, item].sort((a, b) => a.label.localeCompare(b.label, "ru")));
+    } catch (error) {
+      setSyncStatus(getErrorMessage(error, "Не удалось сохранить упражнение"));
+    }
+  };
+
+  const removeExerciseLibraryItem = async (id: string) => {
+    try {
+      await deleteExerciseLibraryItem(id);
+      setExerciseLibrary((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      setSyncStatus(getErrorMessage(error, "Не удалось удалить упражнение"));
+    }
+  };
   useEffect(() => {
     const loadStrength = async () => {
       if (!isSupabaseConfigured || !selectedClientId) { setSelectedClientStrength([]); return; }
@@ -532,7 +560,9 @@ const CoachDashboard = () => {
         {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><button type="button" onClick={exportClientsCsv} className="btn btn-secondary btn-sm glass mt-3"><Download size={14} /> Экспорт в CSV</button>{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(52,231,166,.45)" : needsPaymentAttention(c) ? alertColors.warning.border : "var(--line)", background: needsPaymentAttention(c) ? alertColors.warning.bg : undefined }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}{needsPaymentAttention(c) && <span className="badge" style={{ background: alertColors.warning.bg, color: alertColors.warning.text, border: `1px solid ${alertColors.warning.border}` }}>Оплата</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} coachId={user?.id || ""} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} library={exerciseLibrary} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
+
+        {tab === "exercises" && <Panel title="Библиотека упражнений" subtitle="сохранённые упражнения для быстрой вставки в планы"><ExerciseLibraryManager library={exerciseLibrary} onAdd={addExerciseLibraryItem} onRemove={removeExerciseLibraryItem} /></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
@@ -1149,16 +1179,14 @@ const weekDays = ["Понедельник", "Вторник", "Среда", "Ч�
 
 const exerciseMuscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Руки", "Кор", "Другое"];
 
-// Шаблон в библиотеке хранит только название и группу мышц — подходы и
-// повторы у одного и того же упражнения отличаются от клиента к клиенту,
-// поэтому их тренер вписывает вручную при каждой вставке, а не хранит
-// заранее зафиксированными в шаблоне.
-const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onInsert: (text: string) => void; onAdd: (label: string, muscleGroup: string) => void; onRemove: (id: string) => void }) => {
+// В конструкторе плана библиотека нужна только для вставки — управление
+// (добавление/удаление упражнений) переехало на отдельную вкладку меню,
+// чтобы не загромождать каждую тренировку внутри плана лишними полями.
+// Подходы и повторы у одного упражнения отличаются от клиента к клиенту,
+// поэтому в шаблоне не хранятся — тренер вписывает их тут же, при вставке.
+const ExerciseLibraryInsert = ({ library, onInsert }: { library: ExerciseLibraryItem[]; onInsert: (text: string) => void }) => {
   const [selectedId, setSelectedId] = useState("");
   const [setsReps, setSetsReps] = useState("");
-  const [newLabel, setNewLabel] = useState("");
-  const [newMuscleGroup, setNewMuscleGroup] = useState("");
-  const [manageOpen, setManageOpen] = useState(false);
 
   const insert = () => {
     const item = library.find((candidate) => candidate.id === selectedId);
@@ -1168,38 +1196,65 @@ const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library
     setSetsReps("");
   };
 
+  if (!library.length) return <p className="text-xs mt-3 mb-1" style={{ color: "var(--ink-3)" }}>Библиотека упражнений пуста — добавь упражнения на вкладке «Библиотека упражнений» в меню, чтобы вставлять их сюда одной кнопкой.</p>;
+
   return (
-    <div className="rounded-2xl p-3 mt-3 mb-1" style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--line)" }}>
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-xs flex-1 min-w-[180px]" style={{ color: "var(--ink-3)" }}>
-          Упражнение из библиотеки
-          <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="field-input mt-1">
-            <option value="">Выбрать...</option>
-            {library.map((item) => <option key={item.id} value={item.id}>{item.label}{item.muscleGroup ? ` (${item.muscleGroup})` : ""}</option>)}
-          </select>
-        </label>
-        <label className="text-xs" style={{ color: "var(--ink-3)" }}>
-          Подходы×повторы
-          <input value={setsReps} onChange={(event) => setSetsReps(event.target.value)} placeholder="4×8" className="field-input mt-1 w-28" />
-        </label>
-        <button type="button" disabled={!selectedId} onClick={insert} className="btn btn-secondary btn-sm glass">Вставить</button>
-        <button type="button" onClick={() => setManageOpen((value) => !value)} className="btn btn-ghost btn-sm">{manageOpen ? "Скрыть библиотеку" : "Управлять библиотекой"}</button>
-      </div>
-      {manageOpen && (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_auto] gap-2">
-            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Название упражнения, например: Жим лёжа" className="field-input mt-0" />
-            <select value={newMuscleGroup} onChange={(event) => setNewMuscleGroup(event.target.value)} className="field-input mt-0">
-              <option value="">Группа мышц</option>
+    <div className="flex flex-wrap gap-2 items-end mt-3 mb-1">
+      <label className="text-xs flex-1 min-w-[180px]" style={{ color: "var(--ink-3)" }}>
+        Вставить из библиотеки
+        <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="field-input mt-1">
+          <option value="">Выбрать...</option>
+          {library.map((item) => <option key={item.id} value={item.id}>{item.label}{item.muscleGroup ? ` (${item.muscleGroup})` : ""}</option>)}
+        </select>
+      </label>
+      <label className="text-xs" style={{ color: "var(--ink-3)" }}>
+        Подходы×повторы
+        <input value={setsReps} onChange={(event) => setSetsReps(event.target.value)} placeholder="4×8" className="field-input mt-1 w-28" />
+      </label>
+      <button type="button" disabled={!selectedId} onClick={insert} className="btn btn-secondary btn-sm glass">Вставить</button>
+    </div>
+  );
+};
+
+const ExerciseLibraryManager = ({ library, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onAdd: (label: string, muscleGroup: string) => void; onRemove: (id: string) => void }) => {
+  const [label, setLabel] = useState("");
+  const [muscleGroup, setMuscleGroup] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+
+  const groupsPresent = Array.from(new Set(library.map((item) => item.muscleGroup).filter(Boolean))) as string[];
+  const filtered = groupFilter === "all" ? library : library.filter((item) => item.muscleGroup === groupFilter);
+
+  return (
+    <div className="space-y-5">
+      <div className="app-card rounded-2xl p-4">
+        <h3 className="text-xl font-bold">Добавить упражнение</h3>
+        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Подходы и повторы здесь не сохраняются — их впишешь вручную при вставке в конкретный план, у каждого клиента они свои.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3">
+          <Field label="Название" value={label} onChange={setLabel} />
+          <label className="field-label">Группа мышц
+            <select value={muscleGroup} onChange={(event) => setMuscleGroup(event.target.value)} className="field-input">
+              <option value="">Не указана</option>
               {exerciseMuscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}
             </select>
-            <button type="button" disabled={!newLabel.trim()} onClick={() => { onAdd(newLabel.trim(), newMuscleGroup); setNewLabel(""); setNewMuscleGroup(""); }} className="btn btn-secondary btn-sm glass">Сохранить</button>
-          </div>
-          {Boolean(library.length) && <div className="flex flex-wrap gap-2">
-            {library.map((item) => <span key={item.id} className="badge badge-neutral flex items-center gap-2">{item.label}{item.muscleGroup ? ` · ${item.muscleGroup}` : ""}<button type="button" onClick={() => onRemove(item.id)} aria-label={`Удалить ${item.label} из библиотеки`} style={{ color: "#ff8a98" }}>×</button></span>)}
-          </div>}
+          </label>
+          <div className="flex items-end"><button type="button" disabled={!label.trim()} onClick={() => { onAdd(label.trim(), muscleGroup); setLabel(""); setMuscleGroup(""); }} className="btn btn-primary btn-md w-full">Добавить</button></div>
         </div>
-      )}
+      </div>
+
+      {Boolean(groupsPresent.length) && <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setGroupFilter("all")} className={groupFilter === "all" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>
+        {groupsPresent.map((group) => <button key={group} type="button" onClick={() => setGroupFilter(group)} className={groupFilter === group ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{group}</button>)}
+      </div>}
+
+      {!filtered.length && <p style={{ color: "var(--ink-2)" }}>{library.length ? "В этой группе пока пусто." : "Упражнений пока нет — добавь первое выше."}</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {filtered.map((item) => (
+          <div key={item.id} className="app-card rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div><b>{item.label}</b>{item.muscleGroup && <p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{item.muscleGroup}</p>}</div>
+            <button type="button" onClick={() => onRemove(item.id)} className="btn btn-danger btn-sm">Удалить</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -1228,40 +1283,14 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, coachId, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; allWorkouts: Workout[]; onSwitchWorkout: (id: string) => void; clients: Client[]; coachId: string; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
+const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, library, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; allWorkouts: Workout[]; onSwitchWorkout: (id: string) => void; clients: Client[]; library: ExerciseLibraryItem[]; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
   const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
   const [bulkStartDate, setBulkStartDate] = useState(toISODate(new Date()));
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
-  const [library, setLibrary] = useState<ExerciseLibraryItem[]>([]);
 
   useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured || !coachId) return;
-    fetchExerciseLibrary(coachId).then(setLibrary).catch(() => {});
-  }, [coachId]);
-
-  const addLibraryItem = async (label: string, muscleGroup: string) => {
-    if (!isSupabaseConfigured || !coachId) return;
-    try {
-      const item = await createExerciseLibraryItem(coachId, label, muscleGroup || undefined);
-      setLibrary((current) => [...current, item]);
-    } catch {
-      // Библиотека — вспомогательный ускоритель ввода, а не критичные данные:
-      // если сохранить не удалось, план всё равно можно собрать вручную.
-    }
-  };
-
-  const removeLibraryItem = async (id: string) => {
-    try {
-      await deleteExerciseLibraryItem(id);
-      setLibrary((current) => current.filter((item) => item.id !== id));
-    } catch {
-      // См. комментарий в addLibraryItem.
-    }
-  };
 
   const usedDays = Object.keys(draft.weeklyTemplate || {});
   const availableDays = weekDays.filter((day) => !usedDays.includes(day));
@@ -1379,7 +1408,7 @@ const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, coachId
                   <Field label="Название тренировки" value={dayWorkout.title} onChange={(title) => updateDay(day, { title })} />
                   <Field label="Фокус" value={dayWorkout.focus} onChange={(focus) => updateDay(day, { focus })} />
                 </div>
-                <ExerciseLibraryPicker library={library} onInsert={(label) => updateDay(day, { exercises: [...(dayWorkout.exercises || []), label] })} onAdd={addLibraryItem} onRemove={removeLibraryItem} />
+                <ExerciseLibraryInsert library={library} onInsert={(text) => updateDay(day, { exercises: [...(dayWorkout.exercises || []), text] })} />
                 <ExerciseList exercises={dayWorkout.exercises || []} onChange={(exercises) => updateDay(day, { exercises })} />
                 <TextArea label="Заметки к этому дню" value={dayWorkout.notes} onChange={(notes) => updateDay(day, { notes })} />
               </div>

@@ -471,7 +471,7 @@ const CoachDashboard = () => {
           {clients.some(needsPlanAttention) && <AlertBanner level="warning" title="План не продлевается сам" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
           {clients.some(needsActivityAttention) && <AlertBanner level="danger" title="Давно не отмечались" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>{`${INACTIVITY_DAYS_THRESHOLD}+ дней без отметки тренировки: `}{clients.filter(needsActivityAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
           <Panel title="Активность клиентов" subtitle="отметки тренировок по неделям, все клиенты вместе"><WeeklyActivityChart buckets={weeklyActivity} /></Panel>
-          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
 
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="недельный план каждого клиента, спроецированный на даты"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <CoachCalendarDay date={date} entries={entries} onOpenClient={(clientId) => { setSelectedClientId(clientId); setTab("clients"); }} />} /></Panel>}
@@ -479,10 +479,10 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
@@ -553,14 +553,21 @@ const WeeklyActivityChart = ({ buckets }: { buckets: WeeklyActivityBucket[] }) =
           {trend === 0 ? "Как на прошлой неделе" : `${trend > 0 ? "↑" : "↓"} ${Math.abs(trend)} к прошлой неделе`}
         </p>
       )}
-      <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 items-end" style={{ height: 160 }}>
-        {buckets.map((bucket) => (
-          <div key={bucket.weekStart} className="flex flex-col items-center gap-2 h-full justify-end">
-            <span className="text-sm font-semibold">{bucket.count}</span>
-            <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, (bucket.count / max) * 100)}px`, background: "linear-gradient(180deg,var(--accent),var(--secondary-accent))" }} />
-            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>{bucket.weekStart.slice(5)}</span>
-          </div>
-        ))}
+      {/* Раньше это была grid-cols-4 sm:grid-cols-8: на узких экранах 8 колонок
+          переносились в 2 ряда с общей высотой 160px на оба — грид делил её
+          неровно (не 50/50), и бары последних, самых важных недель заметно
+          сжимались относительно первых. Один ряд с горизонтальным скроллом
+          держит одинаковый масштаб для всех недель на любой ширине экрана. */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-3 items-end" style={{ height: 160, minWidth: 8 * 64 }}>
+          {buckets.map((bucket) => (
+            <div key={bucket.weekStart} className="flex flex-col items-center gap-2 h-full justify-end flex-1" style={{ minWidth: 56 }}>
+              <span className="text-sm font-semibold">{bucket.count}</span>
+              <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, (bucket.count / max) * 100)}px`, background: "linear-gradient(180deg,var(--accent),var(--secondary-accent))" }} />
+              <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--ink-3)" }}>{bucket.weekStart.slice(5)}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -596,7 +603,7 @@ const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteAppli
         const isAdded = hasMatchingClient;
         return (
         <div key={application.id} className="app-card rounded-2xl p-5">
-          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-xl font-bold">{application.name || "Без имени"}</h3>
@@ -782,7 +789,7 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <button type="button" onClick={() => document.getElementById("client-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass xl:hidden self-start"><ArrowLeft size={14} /> К списку клиентов</button>
+        <button type="button" onClick={() => document.getElementById("client-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass lg:hidden self-start"><ArrowLeft size={14} /> К списку клиентов</button>
         <label className="flex items-center gap-2 text-sm sm:ml-auto" style={{ color: "var(--ink-3)" }}>
           Клиент
           <select value={client.id} onChange={(event) => onSwitchClient(event.target.value)} className="field-input mt-0 w-auto">
@@ -807,10 +814,12 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
         <div className="grid grid-cols-1 gap-3">
           <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
             Временный пароль клиента
-            <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
               <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="field-input mt-0 cursor-default" />
-              <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="btn btn-secondary btn-md glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
-              <button type="button" onClick={generatePassword} className="btn btn-secondary btn-md glass">Сгенерировать</button>
+              <div className="grid grid-cols-2 sm:contents gap-2">
+                <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="btn btn-secondary btn-md glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
+                <button type="button" onClick={generatePassword} className="btn btn-secondary btn-md glass">Сгенерировать</button>
+              </div>
             </div>
           </label>
           <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="btn btn-primary btn-md">
@@ -1043,7 +1052,7 @@ const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, onChang
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <button type="button" onClick={() => document.getElementById("workout-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass xl:hidden self-start"><ArrowLeft size={14} /> К списку планов</button>
+        <button type="button" onClick={() => document.getElementById("workout-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass lg:hidden self-start"><ArrowLeft size={14} /> К списку планов</button>
         <label className="flex items-center gap-2 text-sm sm:ml-auto" style={{ color: "var(--ink-3)" }}>
           План
           <select value={workout.id} onChange={(event) => onSwitchWorkout(event.target.value)} className="field-input mt-0 w-auto">
@@ -1172,8 +1181,8 @@ const SiteEditor = ({ settings, onChange }: { settings: SiteSettings; onChange: 
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
-      <div className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+      <div className="space-y-4 min-w-0">
         <Field label="Название бренда" value={draft.brand} onChange={(brand) => update({ brand })} />
         <Field label="Текст бейджа над заголовком" value={draft.heroBadge} onChange={(heroBadge) => update({ heroBadge })} />
         <TextArea label="Главный заголовок" value={draft.heroTitle} onChange={(heroTitle) => update({ heroTitle })} rows={3} />

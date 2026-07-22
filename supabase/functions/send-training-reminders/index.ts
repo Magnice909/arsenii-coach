@@ -41,6 +41,18 @@ Deno.serve(async (req) => {
 
     webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:admin@arseniicoach.ru", vapidPublic, vapidPrivate);
 
+    // Клиент выбирает удобный час напоминания (push_subscriptions.reminder_hour,
+    // 0-23) в своём кабинете — это московское время, единственный часовой пояс,
+    // под который сделано приложение. Чтобы разослать напоминание именно в
+    // выбранный клиентом час, эта функция должна вызываться по расписанию
+    // Supabase Cron КАЖДЫЙ ЧАС (а не раз в сутки, как раньше) — поменяй
+    // расписание в Supabase Dashboard → Edge Functions → send-training-reminders
+    // → Cron на "0 * * * *". У клиентов без выбранного часа (reminder_hour = null)
+    // сохраняется прежнее поведение по умолчанию — 18:00 по Москве.
+    const nowUtc = new Date();
+    const moscowHour = (nowUtc.getUTCHours() + 3) % 24;
+    const DEFAULT_REMINDER_HOUR = 18;
+
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const tomorrowDay = weekDays[tomorrow.getDay()];
 
@@ -66,18 +78,24 @@ Deno.serve(async (req) => {
     const userIds = (clients || []).map((client: any) => client.user_id).filter(Boolean);
     if (!userIds.length) return new Response(JSON.stringify({ sent: 0, day: tomorrowDay }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: subscriptions, error: subscriptionsError } = await supabase
+    const { data: allSubscriptions, error: subscriptionsError } = await supabase
       .from("push_subscriptions")
-      .select("user_id, subscription")
+      .select("user_id, subscription, reminder_hour, reminder_enabled")
       .in("user_id", userIds);
 
     if (subscriptionsError) throw subscriptionsError;
+
+    const subscriptions = (allSubscriptions || []).filter((item: any) => {
+      if (item.reminder_enabled === false) return false;
+      const hour = item.reminder_hour ?? DEFAULT_REMINDER_HOUR;
+      return hour === moscowHour;
+    });
 
     const plansByClient = new Map(plans.map((plan: any) => [plan.client_id, plan]));
     const workoutsById = new Map((workouts || []).map((workout: any) => [workout.id, workout]));
     const clientsByUser = new Map((clients || []).map((client: any) => [client.user_id, client]));
 
-    const results = await Promise.allSettled((subscriptions || []).map((item: any) => {
+    const results = await Promise.allSettled(subscriptions.map((item: any) => {
       const client = clientsByUser.get(item.user_id);
       const plan = plansByClient.get(client?.id);
       const workout = workoutsById.get(plan?.workout_id);

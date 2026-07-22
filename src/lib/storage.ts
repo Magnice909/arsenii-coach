@@ -34,6 +34,11 @@ export type Client = {
   /** Дата последней отметки выполненной тренировки (по всем тренировкам,
    *  не только за текущую неделю). Undefined — клиент ни разу не отмечался. */
   lastActivityDate?: string;
+  /** Метка тренера для сортировки/фильтра клиентов (не влияет на логику,
+   *  в отличие от status). Undefined — метка не выставлена. */
+  tag?: string;
+  /** Дата следующей оплаты. Undefined — оплата не отслеживается. */
+  nextPaymentDate?: string;
 };
 
 export type DayWorkout = {
@@ -53,6 +58,8 @@ export type Workout = {
   notes: string;
   exercises: string[];
   weeklyTemplate?: WeeklyTemplate;
+  /** Шаблон для быстрого копирования при создании плана новому клиенту. */
+  isTemplate?: boolean;
 };
 
 export type Message = {

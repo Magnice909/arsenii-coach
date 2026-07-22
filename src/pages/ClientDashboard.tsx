@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Apple, Award, CalendarDays, CheckCircle2, ClipboardList, Dumbbell, Flame, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Scale, Send, TrendingUp, X, type LucideIcon } from "lucide-react";
+import { Apple, Award, CalendarDays, CheckCircle2, ClipboardList, Download, Dumbbell, Flame, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Scale, Send, Target, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
-import { addDaysToISO, BodyWeightRecord, CompletionHistoryItem, StrengthRecord, createBodyWeightRecord, createNotification, createStrengthRecord, fetchClientBodyWeightRecords, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, fetchMyNotifications, getCompletionForToday, getDayWorkout, markNotificationRead, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
+import { addDaysToISO, BodyWeightRecord, CompletionHistoryItem, StrengthRecord, createBodyWeightRecord, createNotification, createStrengthRecord, fetchClientBodyWeightRecords, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, fetchMyNotifications, getCompletionForToday, getDayWorkout, markNotificationRead, markWorkoutCompleted, PlanPeriod, weekDays, NutritionLog, fetchNutritionLogs, createNutritionLog, deleteNutritionLog, fetchClientGoal, saveClientGoal, fetchReminderPrefs, saveReminderPrefs } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Message, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
@@ -11,29 +11,44 @@ import ProgressRing from "../components/ProgressRing";
 import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type NavItem = { id: string; label: string; icon: LucideIcon };
-const clientNavItems: NavItem[] = [
-  { id: "today", label: "Сегодня", icon: Dumbbell },
-  { id: "calendar", label: "Календарь", icon: CalendarDays },
-  { id: "plan", label: "Мой план", icon: ClipboardList },
-  { id: "history", label: "История", icon: HistoryIcon },
-  { id: "progress", label: "Прогресс", icon: TrendingUp },
-  { id: "nutrition", label: "Питание", icon: Apple },
-  { id: "chat", label: "Связь", icon: MessageCircle },
+type NavGroup = { label: string; items: NavItem[] };
+// Группировка меню по смыслу вместо одного длинного списка.
+const clientNavGroups: NavGroup[] = [
+  { label: "Тренировки", items: [
+    { id: "today", label: "Сегодня", icon: Dumbbell },
+    { id: "calendar", label: "Календарь", icon: CalendarDays },
+    { id: "plan", label: "Мой план", icon: ClipboardList },
+    { id: "history", label: "История", icon: HistoryIcon },
+  ] },
+  { label: "Развитие", items: [
+    { id: "progress", label: "Прогресс", icon: TrendingUp },
+    { id: "nutrition", label: "Питание", icon: Apple },
+  ] },
+  { label: "Связь", items: [
+    { id: "chat", label: "Связь", icon: MessageCircle },
+  ] },
 ];
+const clientNavItems: NavItem[] = clientNavGroups.flatMap((group) => group.items);
 // Вкладки в нижней панели на мобильном — самые частые действия клиента.
 // Остальные (и выход) остаются в полном меню за кнопкой «Ещё».
 const clientMobilePrimaryIds = ["today", "calendar", "plan", "progress"];
 
-const NavList = ({ items, activeTab, showDotForId, onSelect }: { items: NavItem[]; activeTab: string; showDotForId?: string; onSelect: (id: string) => void }) => (
+const NavList = ({ groups, activeTab, showDotForId, badges, onSelect }: { groups: NavGroup[]; activeTab: string; showDotForId?: string; badges?: Record<string, number>; onSelect: (id: string) => void }) => (
   <div>
-    {items.map(({ id, label, icon: Icon }) => (
+    {groups.map((group) => (
+      <div key={group.label} className="mb-4 last:mb-0">
+        <p className="px-4 mb-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{group.label}</p>
+        {group.items.map(({ id, label, icon: Icon }) => (
       <button key={id} onClick={() => onSelect(id)} aria-current={activeTab === id ? "page" : undefined} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mb-2 transition-colors" style={{ background: activeTab === id ? "rgba(104,225,253,.14)" : "transparent", color: activeTab === id ? "var(--ink)" : "var(--ink-3)", border: activeTab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>
         <span className="relative">
           <Icon size={18} strokeWidth={activeTab === id ? 2.4 : 1.8} />
           {id === showDotForId && <span className="absolute -top-0.5 -right-1 h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />}
         </span>
         <span className="flex-1">{label}</span>
+        {Boolean(badges?.[id]) && <span className="rounded-full px-2 py-0.5 text-xs font-semibold shrink-0" style={{ background: "rgba(255,138,152,.18)", color: "#ff8a98" }}>{badges![id]}</span>}
       </button>
+        ))}
+      </div>
     ))}
   </div>
 );
@@ -50,8 +65,14 @@ const ClientDashboard = () => {
   const [history, setHistory] = useState<CompletionHistoryItem[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
   const [bodyWeightRecords, setBodyWeightRecords] = useState<BodyWeightRecord[]>([]);
+  const [targetWeightKg, setTargetWeightKg] = useState<number | undefined>(undefined);
+  const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
   const [notifications, setNotifications] = useState<Message[]>([]);
   const [pushStatus, setPushStatus] = useState("");
+  const [reminderHour, setReminderHour] = useState<number | undefined>(undefined);
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderStatus, setReminderStatus] = useState("");
+  const [hasPushSubscription, setHasPushSubscription] = useState(false);
   const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState<PlanPeriod | null>(null);
@@ -182,8 +203,14 @@ const ClientDashboard = () => {
           setHistory(await fetchClientCompletionHistory(data.client.id, user.id));
           setStrengthRecords(await fetchClientStrengthRecords(data.client.id, user.id));
           setBodyWeightRecords(await fetchClientBodyWeightRecords(data.client.id, user.id));
+          setTargetWeightKg(await fetchClientGoal(data.client.id));
+          setNutritionLogs(await fetchNutritionLogs(data.client.id, user.id));
         }
         setNotifications(await fetchMyNotifications());
+        const prefs = await fetchReminderPrefs(user.id);
+        setReminderHour(prefs.reminderHour);
+        setReminderEnabled(prefs.reminderEnabled);
+        setHasPushSubscription(prefs.hasSubscription);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить план клиента");
       } finally {
@@ -208,9 +235,43 @@ const ClientDashboard = () => {
     try {
       await enablePushNotifications(user?.id);
       setPushStatus("Уведомления включены на этом устройстве");
+      setHasPushSubscription(true);
     } catch (error) {
       setPushStatus(getErrorMessage(error, "Не удалось включить уведомления"));
     }
+  };
+
+  const saveReminder = async () => {
+    if (!user?.id) return;
+    setReminderStatus("");
+    try {
+      await saveReminderPrefs(user.id, reminderHour, reminderEnabled);
+      setReminderStatus("Время напоминания сохранено");
+    } catch (error) {
+      setReminderStatus(getErrorMessage(error, "Не удалось сохранить время напоминания"));
+    }
+  };
+
+  const downloadPlanAsText = () => {
+    if (!client) return;
+    const lines: string[] = [`План тренировок — ${client.name}`];
+    if (currentPeriod) lines.push(`Активный период: ${currentPeriod.startDate} – ${currentPeriod.endDate}`);
+    lines.push("");
+    const trainingDays = Object.keys(activeWeeklyPlan).sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
+    if (!trainingDays.length) lines.push("План пока пуст.");
+    for (const day of trainingDays) {
+      const dayWorkout = getDayWorkout(workouts.find((item) => item.id === activeWeeklyPlan[day]), day);
+      lines.push(`${day}: ${dayWorkout?.title || "Тренировка"}`);
+      (dayWorkout?.exercises || []).forEach((exercise) => lines.push(`  - ${exercise}`));
+      lines.push("");
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `plan-${toISODate(new Date())}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
 
@@ -260,14 +321,14 @@ const ClientDashboard = () => {
             <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
             <button onClick={() => setMobileMenuOpen(false)} className="rounded-full p-2 glass" aria-label="Закрыть меню"><X size={18} /></button>
           </div>
-          <NavList items={clientNavItems} activeTab={tab} showDotForId={todayNeedsAttention ? "today" : undefined} onSelect={(id) => { setTab(id); setMobileMenuOpen(false); }} />
+          <NavList groups={clientNavGroups} activeTab={tab} showDotForId={todayNeedsAttention ? "today" : undefined} badges={{ chat: notifications.length }} onSelect={(id) => { setTab(id); setMobileMenuOpen(false); }} />
           <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
         </aside>
       </div>}
 
       <aside className="hidden lg:flex lg:flex-col border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
-        <NavList items={clientNavItems} activeTab={tab} showDotForId={todayNeedsAttention ? "today" : undefined} onSelect={setTab} />
+        <NavList groups={clientNavGroups} activeTab={tab} showDotForId={todayNeedsAttention ? "today" : undefined} badges={{ chat: notifications.length }} onSelect={setTab} />
         <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
       </aside>
 
@@ -309,14 +370,19 @@ const ClientDashboard = () => {
               </div>
             </HoloCard>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setTab("progress")} className="btn btn-secondary btn-sm glass"><Scale size={14} /> Добавить вес</button>
+            <button type="button" onClick={() => setTab("nutrition")} className="btn btn-secondary btn-sm glass"><Apple size={14} /> Записать питание</button>
+            <button type="button" onClick={() => setTab("chat")} className="btn btn-secondary btn-sm glass"><Send size={14} /> Написать тренеру</button>
+          </div>
           <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>
         </div>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
-        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={activeWeeklyPlan} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
+        {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><button type="button" onClick={downloadPlanAsText} className="btn btn-secondary btn-sm glass mb-4"><Download size={14} /> Скачать план</button>{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={activeWeeklyPlan} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
-                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" ring={client.progress} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
-        {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
-        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Сообщения от тренера</h3><p className="mt-2 text-sm mb-4" style={{ color: "var(--ink-2)" }}>Если Арсений напишет через кабинет, сообщение появится здесь.</p>{!notifications.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Новых сообщений пока нет.</p>}<div className="space-y-3">{notifications.map((m) => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span><button onClick={() => markNotificationSeen(m.id)} className="btn btn-secondary btn-sm glass mt-3">Прочитано</button></div>)}</div></div><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
+                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" ring={client.progress} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} targetWeightKg={targetWeightKg} onSaveGoal={setTargetWeightKg} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
+        {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p><NutritionDiary clientId={client.id} userId={user?.id || ""} logs={nutritionLogs} onAdd={(log) => setNutritionLogs((current) => [log, ...current])} onDelete={(id) => setNutritionLogs((current) => current.filter((log) => log.id !== id))} /></Panel>}
+        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Сообщения от тренера</h3><p className="mt-2 text-sm mb-4" style={{ color: "var(--ink-2)" }}>Если Арсений напишет через кабинет, сообщение появится здесь.</p>{!notifications.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Новых сообщений пока нет.</p>}<div className="space-y-3">{notifications.map((m) => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span><button onClick={() => markNotificationSeen(m.id)} className="btn btn-secondary btn-sm glass mt-3">Прочитано</button></div>)}</div></div><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}{hasPushSubscription && <div className="mt-4"><label className="block text-sm" style={{ color: "var(--ink-3)" }}>Во сколько напоминать о завтрашней тренировке<select value={reminderEnabled ? String(reminderHour ?? "") : "off"} onChange={(event) => { const value = event.target.value; if (value === "off") { setReminderEnabled(false); } else { setReminderEnabled(true); setReminderHour(Number(value)); } }} className="field-input"><option value="off">Не напоминать</option>{Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select></label><button onClick={saveReminder} className="btn btn-secondary btn-sm glass mt-3">Сохранить время напоминания</button>{reminderStatus && <p className="mt-2 text-sm" style={{ color: reminderStatus.includes("сохранен") ? "var(--accent)" : "#ff8a98" }}>{reminderStatus}</p>}</div>}</div></Panel>}
       </section>
     </main>
   );
@@ -424,7 +490,7 @@ const Achievements = ({ streak, completionsCount, strengthRecords }: { streak: n
   );
 };
 
-const BodyWeightProgress = ({ client, userId, records, onAdd }: { client: Client; userId: string; records: BodyWeightRecord[]; onAdd: (record: BodyWeightRecord) => void }) => {
+const BodyWeightProgress = ({ client, userId, records, targetWeightKg, onSaveGoal, onAdd }: { client: Client; userId: string; records: BodyWeightRecord[]; targetWeightKg?: number; onSaveGoal: (value: number) => void; onAdd: (record: BodyWeightRecord) => void }) => {
   const [weightKg, setWeightKg] = useState("");
   const [recordedDate, setRecordedDate] = useState(toISODate(new Date()));
   const [status, setStatus] = useState("");
@@ -457,7 +523,54 @@ const BodyWeightProgress = ({ client, userId, records, onAdd }: { client: Client
         <div className="flex items-end"><button onClick={addRecord} className="btn btn-primary btn-md w-full"><Plus size={16} /> Добавить</button></div>
       </div>
       {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
+      <WeightGoal clientId={client.id} userId={userId} sortedRecords={sorted} targetWeightKg={targetWeightKg} onSave={onSaveGoal} />
       <BodyWeightChart records={sorted} />
+    </div>
+  );
+};
+
+const WeightGoal = ({ clientId, userId, sortedRecords, targetWeightKg, onSave }: { clientId: string; userId: string; sortedRecords: BodyWeightRecord[]; targetWeightKg?: number; onSave: (value: number) => void }) => {
+  const [value, setValue] = useState(targetWeightKg ? String(targetWeightKg) : "");
+  const [status, setStatus] = useState("");
+  useEffect(() => setValue(targetWeightKg ? String(targetWeightKg) : ""), [targetWeightKg]);
+
+  const save = async () => {
+    setStatus("");
+    const target = Number(value);
+    if (!target || target <= 0) {
+      setStatus("Укажи цель больше 0");
+      return;
+    }
+    try {
+      await saveClientGoal(clientId, userId, target);
+      onSave(target);
+      setStatus("Цель сохранена");
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось сохранить цель"));
+    }
+  };
+
+  const startWeight = sortedRecords[0]?.weightKg;
+  const latestWeight = sortedRecords[sortedRecords.length - 1]?.weightKg;
+  let goalPercent: number | null = null;
+  if (targetWeightKg && startWeight !== undefined && latestWeight !== undefined && startWeight !== targetWeightKg) {
+    goalPercent = Math.max(0, Math.min(100, Math.round(((startWeight - latestWeight) / (startWeight - targetWeightKg)) * 100)));
+  }
+
+  return (
+    <div className="rounded-2xl p-4 mt-4" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
+      <h4 className="font-bold flex items-center gap-2"><Target size={16} /> Моя цель по весу</h4>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 mt-3 items-end">
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Целевой вес, кг<input type="number" min="0" step="0.1" value={value} onChange={(event) => setValue(event.target.value)} className="field-input" /></label>
+        <button onClick={save} className="btn btn-secondary btn-md glass">Сохранить цель</button>
+      </div>
+      {status && <p className="mt-2 text-sm" style={{ color: status.includes("сохранена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
+      {goalPercent !== null && latestWeight !== undefined && targetWeightKg !== undefined && (
+        <div className="flex items-center gap-4 mt-4">
+          <ProgressRing percent={goalPercent} size={48} strokeWidth={5} />
+          <p className="text-sm" style={{ color: "var(--ink-2)" }}>Сейчас {latestWeight} кг, цель {targetWeightKg} кг</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -486,6 +599,74 @@ const BodyWeightChart = ({ records }: { records: BodyWeightRecord[] }) => {
         <polyline fill="none" stroke="var(--accent)" strokeWidth="4" points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
         {points.map((point) => <g key={`${point.record.id}-${point.x}`}><circle cx={point.x} cy={point.y} r="6" fill="var(--accent)" /><text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="13" fill="white">{point.record.weightKg} кг</text></g>)}
       </svg>
+    </div>
+  );
+};
+
+const NutritionDiary = ({ clientId, userId, logs, onAdd, onDelete }: { clientId: string; userId: string; logs: NutritionLog[]; onAdd: (log: NutritionLog) => void; onDelete: (id: string) => void }) => {
+  const [text, setText] = useState("");
+  const [calories, setCalories] = useState("");
+  const [status, setStatus] = useState("");
+
+  const add = async () => {
+    setStatus("");
+    if (!text.trim()) {
+      setStatus("Опиши приём пищи");
+      return;
+    }
+    try {
+      const log = await createNutritionLog({ clientId, userId, text: text.trim(), calories: calories ? Number(calories) : undefined, loggedDate: toISODate(new Date()) });
+      onAdd(log);
+      setText("");
+      setCalories("");
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось сохранить запись"));
+    }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      await deleteNutritionLog(id);
+      onDelete(id);
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось удалить запись"));
+    }
+  };
+
+  const groups: { date: string; items: NutritionLog[] }[] = [];
+  for (const log of logs) {
+    const group = groups.find((item) => item.date === log.loggedDate);
+    if (group) group.items.push(log);
+    else groups.push({ date: log.loggedDate, items: [log] });
+  }
+
+  return (
+    <div className="app-card rounded-2xl p-5 mt-5">
+      <h3 className="text-xl font-bold flex items-center gap-2"><Apple size={18} /> Мой дневник питания</h3>
+      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-2)" }}>Записывай приёмы пищи — тренер увидит это в своём кабинете.</p>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_auto] gap-3">
+        <label className="block text-sm md:hidden" style={{ color: "var(--ink-3)" }}>Что съел</label>
+        <input value={text} onChange={(event) => setText(event.target.value)} placeholder="Например, овсянка с бананом" className="field-input mt-0" style={{ fontSize: "16px" }} />
+        <input value={calories} onChange={(event) => setCalories(event.target.value)} type="number" min="0" placeholder="Ккал (не обяз.)" className="field-input mt-0" style={{ fontSize: "16px" }} />
+        <button type="button" onClick={add} className="btn btn-primary btn-md">Добавить</button>
+      </div>
+      {status && <p className="mt-2 text-sm" style={{ color: "#ff8a98" }}>{status}</p>}
+      <div className="space-y-4 mt-5">
+        {!logs.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Записей пока нет.</p>}
+        {groups.map((group) => (
+          <div key={group.date}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--ink-3)" }}>{new Date(group.date + "T00:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
+            <div className="space-y-2">
+              {group.items.map((log) => (
+                <div key={log.id} className="rounded-2xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: "rgba(255,255,255,.04)" }}>
+                  <span className="text-sm" style={{ color: "var(--ink-2)" }}>{log.text}{log.calories ? ` — ${log.calories} ккал` : ""}</span>
+                  <button type="button" onClick={() => remove(log.id)} className="text-xs font-semibold shrink-0" style={{ color: "#ff8a98" }}>Удалить</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

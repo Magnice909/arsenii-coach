@@ -58,6 +58,8 @@ const dbClientToClient = (row: any, workouts: Workout[] = [], weeklyPlan: Record
     weeklyPlan,
     nextPlanId: row.next_plan_id || undefined,
     nextPlanWeekStart: row.next_plan_week_start || undefined,
+    tag: row.tag || undefined,
+    nextPaymentDate: row.next_payment_date || undefined,
   };
 };
 
@@ -90,6 +92,7 @@ const dbWorkoutToWorkout = (row: any): Workout => {
     notes: row.notes || "",
     exercises: Array.isArray(row.exercises) ? row.exercises : [],
     weeklyTemplate,
+    isTemplate: Boolean(row.is_template),
   };
 };
 
@@ -219,6 +222,8 @@ export const updateClientRecord = async (coachId: string, client: Client) => {
     user_id: client.userId || null,
     next_plan_id: client.nextPlanId || null,
     next_plan_week_start: client.nextPlanWeekStart || null,
+    tag: client.tag || null,
+    next_payment_date: client.nextPaymentDate || null,
   }).eq("id", client.id).eq("coach_id", coachId);
   if (error) throw error;
 };
@@ -245,6 +250,7 @@ export const updateWorkoutRecord = async (coachId: string, workout: Workout) => 
     focus: workout.focus,
     notes: workout.notes,
     exercises: serializeWorkoutExercises(workout),
+    is_template: Boolean(workout.isTemplate),
   }).eq("id", workout.id).eq("coach_id", coachId);
   if (error) throw error;
 };
@@ -776,5 +782,85 @@ export const fetchPlanPeriodsInRange = async (clientIds: string[], rangeStart: s
     .gte("end_date", rangeStart);
   if (error) throw error;
   return (data || []).map(dbPlanPeriodToPeriod);
+};
+
+// ============================================================
+// Заметки тренера по клиенту (client_notes) — приватный журнал
+// ============================================================
+
+export type ClientNote = { id: string; clientId: string; text: string; createdAt: string };
+
+const dbClientNoteToNote = (row: any): ClientNote => ({ id: row.id, clientId: row.client_id, text: row.text, createdAt: row.created_at });
+
+export const fetchClientNotes = async (clientId: string): Promise<ClientNote[]> => {
+  const { data, error } = await supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(dbClientNoteToNote);
+};
+
+export const createClientNote = async (coachId: string, clientId: string, text: string): Promise<ClientNote> => {
+  const { data, error } = await supabase.from("client_notes").insert({ coach_id: coachId, client_id: clientId, text }).select("*").single();
+  if (error) throw error;
+  return dbClientNoteToNote(data);
+};
+
+export const deleteClientNote = async (noteId: string) => {
+  const { error } = await supabase.from("client_notes").delete().eq("id", noteId);
+  if (error) throw error;
+};
+
+// ============================================================
+// Дневник питания клиента (nutrition_logs) — ведёт сам клиент
+// ============================================================
+
+export type NutritionLog = { id: string; text: string; calories?: number; loggedDate: string; createdAt: string };
+
+const dbNutritionLogToLog = (row: any): NutritionLog => ({ id: row.id, text: row.text, calories: row.calories ?? undefined, loggedDate: row.logged_date, createdAt: row.created_at });
+
+export const fetchNutritionLogs = async (clientId: string, userId: string): Promise<NutritionLog[]> => {
+  const { data, error } = await supabase.from("nutrition_logs").select("*").eq("client_id", clientId).eq("user_id", userId).order("logged_date", { ascending: false }).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(dbNutritionLogToLog);
+};
+
+export const createNutritionLog = async (record: { clientId: string; userId: string; text: string; calories?: number; loggedDate: string }): Promise<NutritionLog> => {
+  const { data, error } = await supabase.from("nutrition_logs").insert({ client_id: record.clientId, user_id: record.userId, text: record.text, calories: record.calories ?? null, logged_date: record.loggedDate }).select("*").single();
+  if (error) throw error;
+  return dbNutritionLogToLog(data);
+};
+
+export const deleteNutritionLog = async (logId: string) => {
+  const { error } = await supabase.from("nutrition_logs").delete().eq("id", logId);
+  if (error) throw error;
+};
+
+// ============================================================
+// Цель клиента (client_goals) — целевой вес, ставит сам клиент
+// ============================================================
+
+export const fetchClientGoal = async (clientId: string): Promise<number | undefined> => {
+  const { data, error } = await supabase.from("client_goals").select("target_weight_kg").eq("client_id", clientId).maybeSingle();
+  if (error) throw error;
+  return data?.target_weight_kg ?? undefined;
+};
+
+export const saveClientGoal = async (clientId: string, userId: string, targetWeightKg: number) => {
+  const { error } = await supabase.from("client_goals").upsert({ client_id: clientId, user_id: userId, target_weight_kg: targetWeightKg, updated_at: new Date().toISOString() }, { onConflict: "client_id" });
+  if (error) throw error;
+};
+
+// ============================================================
+// Время напоминания о тренировке (push_subscriptions.reminder_hour)
+// ============================================================
+
+export const fetchReminderPrefs = async (userId: string): Promise<{ reminderHour?: number; reminderEnabled: boolean; hasSubscription: boolean }> => {
+  const { data, error } = await supabase.from("push_subscriptions").select("reminder_hour, reminder_enabled").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return { reminderHour: data?.reminder_hour ?? undefined, reminderEnabled: data?.reminder_enabled ?? true, hasSubscription: data !== null };
+};
+
+export const saveReminderPrefs = async (userId: string, reminderHour: number | undefined, reminderEnabled: boolean) => {
+  const { error } = await supabase.from("push_subscriptions").update({ reminder_hour: reminderHour ?? null, reminder_enabled: reminderEnabled }).eq("user_id", userId);
+  if (error) throw error;
 };
 

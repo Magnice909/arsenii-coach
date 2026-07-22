@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Tag, Trash2, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket, ClientNote, fetchClientNotes, createClientNote, deleteClientNote } from "../lib/db";
 import CalendarView from "../components/CalendarView";
 import HoloCard from "../components/HoloCard";
 import ProgressRing from "../components/ProgressRing";
@@ -48,19 +48,39 @@ const needsPlanAttention = (client: Client) => client.status === "Активен
 const INACTIVITY_DAYS_THRESHOLD = 7;
 const daysSinceIso = (iso: string) => Math.round((new Date(toISODate(new Date()) + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000);
 const needsActivityAttention = (client: Client) => client.status === "Активен" && (!client.lastActivityDate || daysSinceIso(client.lastActivityDate) >= INACTIVITY_DAYS_THRESHOLD);
+// Оплата — отдельная причина для внимания тренера, не смешиваем с планом/активностью.
+const needsPaymentAttention = (client: Client) => Boolean(client.nextPaymentDate) && daysUntilIso(client.nextPaymentDate!) <= 2;
+const needsAnyAttention = (client: Client) => needsPlanAttention(client) || needsActivityAttention(client) || needsPaymentAttention(client);
 
-const coachNavItems: NavItem[] = [
-  { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "calendar", label: "Календарь", icon: CalendarDays },
-  { id: "applications", label: "Заявки", icon: Inbox },
-  { id: "clients", label: "Клиенты", icon: Users },
-  { id: "workouts", label: "Планы тренировок", icon: Dumbbell },
-  { id: "messages", label: "Сообщения", icon: Bell },
-  { id: "settings", label: "Настройки", icon: Settings },
+type NavGroup = { label: string; items: NavItem[] };
+// Группировка меню по разделам вместо одного длинного плоского списка —
+// проще ориентироваться, где искать нужное действие.
+const coachNavGroups: NavGroup[] = [
+  { label: "Обзор", items: [
+    { id: "overview", label: "Обзор", icon: LayoutDashboard },
+    { id: "calendar", label: "Календарь", icon: CalendarDays },
+  ] },
+  { label: "Клиенты", items: [
+    { id: "clients", label: "Клиенты", icon: Users },
+    { id: "applications", label: "Заявки", icon: Inbox },
+  ] },
+  { label: "Контент", items: [
+    { id: "workouts", label: "Планы тренировок", icon: Dumbbell },
+  ] },
+  { label: "Сервис", items: [
+    { id: "messages", label: "Сообщения", icon: Bell },
+    { id: "settings", label: "Настройки", icon: Settings },
+  ] },
 ];
+const coachNavItems: NavItem[] = coachNavGroups.flatMap((group) => group.items);
 // Вкладки в нижней панели на мобильном — самые частые действия тренера.
 // Остальные (и выход) остаются в полном меню за кнопкой «Ещё».
 const coachMobilePrimaryIds = ["overview", "calendar", "clients", "messages"];
+
+const isApplicationPending = (application: Application, clients: Client[]) => !clients.some((client) =>
+  Boolean(application.email && client.email && application.email.trim().toLowerCase() === client.email.trim().toLowerCase()) ||
+  Boolean(application.telegram && client.telegram && application.telegram.trim().toLowerCase() === client.telegram.trim().toLowerCase())
+);
 
 const CoachDashboard = () => {
   const user = getUser();
@@ -81,7 +101,9 @@ const CoachDashboard = () => {
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [clientSearch, setClientSearch] = useState("");
+  const [clientTagFilter, setClientTagFilter] = useState("");
   const [workoutSearch, setWorkoutSearch] = useState("");
+  const [workoutTemplateFilter, setWorkoutTemplateFilter] = useState(false);
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityBucket[]>([]);
   const [broadcastText, setBroadcastText] = useState("");
   const [broadcastClientIds, setBroadcastClientIds] = useState<string[]>([]);
@@ -90,16 +112,24 @@ const CoachDashboard = () => {
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0];
   const selectedWorkout = workouts.find((w) => w.id === selectedWorkoutId) || workouts[0];
   const average = useMemo(() => clients.length ? Math.round(clients.reduce((sum, c) => sum + c.progress, 0) / clients.length) : 0, [clients]);
+  const clientTags = useMemo(() => Array.from(new Set(clients.map((c) => c.tag).filter(Boolean))) as string[], [clients]);
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase();
-    if (!query) return clients;
-    return clients.filter((c) => c.name.toLowerCase().includes(query) || c.telegram.toLowerCase().includes(query));
-  }, [clients, clientSearch]);
+    return clients
+      .filter((c) => !query || c.name.toLowerCase().includes(query) || c.telegram.toLowerCase().includes(query))
+      .filter((c) => !clientTagFilter || c.tag === clientTagFilter);
+  }, [clients, clientSearch, clientTagFilter]);
   const filteredWorkouts = useMemo(() => {
     const query = workoutSearch.trim().toLowerCase();
-    if (!query) return workouts;
-    return workouts.filter((w) => w.title.toLowerCase().includes(query));
-  }, [workouts, workoutSearch]);
+    return workouts
+      .filter((w) => !query || w.title.toLowerCase().includes(query))
+      .filter((w) => !workoutTemplateFilter || w.isTemplate)
+      .slice()
+      .sort((a, b) => Number(Boolean(b.isTemplate)) - Number(Boolean(a.isTemplate)));
+  }, [workouts, workoutSearch, workoutTemplateFilter]);
+  const pendingApplicationsCount = useMemo(() => applications.filter((application) => isApplicationPending(application, clients)).length, [applications, clients]);
+  const attentionClientsCount = useMemo(() => clients.filter(needsAnyAttention).length, [clients]);
+  const navBadges: Record<string, number> = { messages: messages.length, applications: pendingApplicationsCount, clients: attentionClientsCount };
 
   const loadAllData = async () => {
     if (!isSupabaseConfigured || !user?.id) return;
@@ -157,6 +187,10 @@ const CoachDashboard = () => {
     window.addEventListener("focus", onVisible);
     return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
   }, []);
+  // Заявки нужны не только на своей вкладке — от них зависит счётчик в
+  // навигации, который должен быть верным сразу, а не только после того,
+  // как тренер откроет вкладку «Заявки» хотя бы раз.
+  useEffect(() => { loadApplications(); }, [user?.id, refreshKey]);
   useEffect(() => { if (tab === "applications") loadApplications(); }, [tab]);
   useEffect(() => {
     const loadStrength = async () => {
@@ -429,14 +463,14 @@ const CoachDashboard = () => {
             <button onClick={() => { window.location.hash = "/"; setMobileMenuOpen(false); }} className="flex items-center gap-3 font-bold"><span className="logo-mark" /> ARSENIICOACH</button>
             <button onClick={() => setMobileMenuOpen(false)} className="rounded-full p-2 glass" aria-label="Закрыть меню"><X size={18} /></button>
           </div>
-          <NavList items={coachNavItems} activeTab={tab} messageCount={messages.length} onSelect={(id) => { setTab(id); setMobileMenuOpen(false); }} />
+          <NavList groups={coachNavGroups} activeTab={tab} badges={navBadges} onSelect={(id) => { setTab(id); setMobileMenuOpen(false); }} />
           <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
         </aside>
       </div>}
 
       <aside className="hidden lg:flex lg:flex-col border-r p-5 lg:min-h-screen" style={{ borderColor: "var(--line)", background: "rgba(0,0,0,.18)" }}>
         <button onClick={() => window.location.hash = "/"} className="flex items-center gap-3 font-bold mb-8"><span className="logo-mark" /> ARSENIICOACH</button>
-        <NavList items={coachNavItems} activeTab={tab} messageCount={messages.length} onSelect={setTab} />
+        <NavList groups={coachNavGroups} activeTab={tab} badges={navBadges} onSelect={setTab} />
         <button onClick={exit} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mt-6" style={{ color: "#ff8a98" }}><LogOut size={18} /> Выйти</button>
       </aside>
 
@@ -461,7 +495,7 @@ const CoachDashboard = () => {
         <div className="grid-overlay fixed inset-0 opacity-30 pointer-events-none" />
         <header className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div><div className="eyebrow">Кабинет тренера</div><h1 className="mt-2 text-3xl md:text-4xl font-extrabold tracking-[-.02em]">Привет, {user?.name || "Арсений"}</h1><p className="mt-1" style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || "@president_h"}</p></div>
-          <div className="flex gap-3 flex-wrap"><button onClick={addClient} className="btn btn-primary btn-lg"><Users size={17} /> Добавить клиента</button><button onClick={addWorkout} className="btn btn-secondary btn-lg glass"><Dumbbell size={17} /> Создать план</button></div>
+          <div className="flex gap-3 flex-wrap"><button onClick={addClient} className="btn btn-primary btn-lg"><Users size={17} /> Добавить клиента</button><button onClick={addWorkout} className="btn btn-secondary btn-lg glass"><Dumbbell size={17} /> Создать план</button><button onClick={() => setTab("messages")} className="btn btn-secondary btn-lg glass"><Send size={17} /> Написать клиентам</button></div>
         </header>
 
         {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4 text-sm" style={{ color: syncStatus.endsWith("...") || syncStatus === "План назначен выбранным клиентам" ? "var(--ink-2)" : "#ff8a98" }}>{syncStatus}</div>}
@@ -470,6 +504,7 @@ const CoachDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" ring={average} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
           {clients.some(needsPlanAttention) && <AlertBanner level="warning" title="План не продлевается сам" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
           {clients.some(needsActivityAttention) && <AlertBanner level="danger" title="Давно не отмечались" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>{`${INACTIVITY_DAYS_THRESHOLD}+ дней без отметки тренировки: `}{clients.filter(needsActivityAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
+          {clients.some(needsPaymentAttention) && <AlertBanner level="warning" title="Пора напомнить об оплате" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>Оплата уже просрочена или подходит в ближайшие 2 дня: {clients.filter(needsPaymentAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
           <Panel title="Активность клиентов" subtitle="отметки тренировок по неделям, все клиенты вместе"><WeeklyActivityChart buckets={weeklyActivity} /></Panel>
           <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
@@ -479,10 +514,10 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" />{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
@@ -511,14 +546,19 @@ const CoachCalendarDay = ({ date, entries, onOpenClient }: { date: string; entri
   );
 };
 
-const NavList = ({ items, activeTab, messageCount, onSelect }: { items: NavItem[]; activeTab: string; messageCount: number; onSelect: (id: string) => void }) => (
+const NavList = ({ groups, activeTab, badges, onSelect }: { groups: NavGroup[]; activeTab: string; badges: Record<string, number>; onSelect: (id: string) => void }) => (
   <div>
-    {items.map(({ id, label, icon: Icon }) => (
-      <button key={id} onClick={() => onSelect(id)} aria-current={activeTab === id ? "page" : undefined} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mb-2 transition-colors" style={{ background: activeTab === id ? "rgba(104,225,253,.14)" : "transparent", color: activeTab === id ? "var(--ink)" : "var(--ink-3)", border: activeTab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>
-        <Icon size={18} strokeWidth={activeTab === id ? 2.4 : 1.8} />
-        <span className="flex-1">{label}</span>
-        {id === "messages" && messageCount > 0 && <span className="rounded-full px-2 py-0.5 text-xs font-semibold shrink-0" style={{ background: "rgba(255,138,152,.18)", color: "#ff8a98" }}>{messageCount}</span>}
-      </button>
+    {groups.map((group) => (
+      <div key={group.label} className="mb-4 last:mb-0">
+        <p className="px-4 mb-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{group.label}</p>
+        {group.items.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => onSelect(id)} aria-current={activeTab === id ? "page" : undefined} className="w-full flex items-center gap-3 text-left rounded-2xl px-4 py-3 mb-2 transition-colors" style={{ background: activeTab === id ? "rgba(104,225,253,.14)" : "transparent", color: activeTab === id ? "var(--ink)" : "var(--ink-3)", border: activeTab === id ? "1px solid rgba(104,225,253,.28)" : "1px solid transparent" }}>
+            <Icon size={18} strokeWidth={activeTab === id ? 2.4 : 1.8} />
+            <span className="flex-1">{label}</span>
+            {Boolean(badges[id]) && <span className="rounded-full px-2 py-0.5 text-xs font-semibold shrink-0" style={{ background: "rgba(255,138,152,.18)", color: "#ff8a98" }}>{badges[id]}</span>}
+          </button>
+        ))}
+      </div>
     ))}
   </div>
 );
@@ -533,7 +573,7 @@ const Metric = ({ title, value, ring, onClick, hint }: { title: string; value?: 
   return <HoloCard className="stat-tile glass rounded-3xl p-5">{content}</HoloCard>;
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <AlertLine level="warning">План закончился или заканчивается — нужно продлить</AlertLine>}{needsActivityAttention(c) && <AlertLine level="danger">{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</AlertLine>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-lg">{c.name}</h3>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <AlertLine level="warning">План закончился или заканчивается — нужно продлить</AlertLine>}{needsActivityAttention(c) && <AlertLine level="danger">{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</AlertLine>}{needsPaymentAttention(c) && <AlertLine level="warning">Оплата {daysUntilIso(c.nextPaymentDate!) < 0 ? "просрочена" : daysUntilIso(c.nextPaymentDate!) === 0 ? "сегодня" : `через ${daysUntilIso(c.nextPaymentDate!)} дн.`}</AlertLine>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) => (
   <label className="relative block">
     <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-3)" }} />
@@ -596,11 +636,7 @@ const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteAppli
   return (
     <div className="space-y-4">
       {applications.map((application) => {
-        const hasMatchingClient = clients.some((client) =>
-          Boolean(application.email && client.email && application.email.trim().toLowerCase() === client.email.trim().toLowerCase()) ||
-          Boolean(application.telegram && client.telegram && application.telegram.trim().toLowerCase() === client.telegram.trim().toLowerCase())
-        );
-        const isAdded = hasMatchingClient;
+        const isAdded = !isApplicationPending(application, clients);
         return (
         <div key={application.id} className="app-card rounded-2xl p-5">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -657,7 +693,7 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
 const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="field-label">{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="field-input" style={{ fontSize: "16px" }} /></label>;
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="field-label">{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="field-input resize-none" /></label>;
 
-const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRecords, onChange, onDelete }: { client: Client; allClients: Client[]; onSwitchClient: (id: string) => void; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
+const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRecords, coachId, onChange, onDelete }: { client: Client; allClients: Client[]; onSwitchClient: (id: string) => void; workouts: Workout[]; strengthRecords: StrengthRecord[]; coachId: string; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
   const [clientPassword, setClientPassword] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
@@ -804,6 +840,8 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
         <Field label="Статус" value={client.status} onChange={(status) => onChange({ status })} />
         <Field label="Прогресс, %" type="number" value={client.progress} onChange={(progress) => onChange({ progress: Math.max(0, Math.min(100, Number(progress) || 0)) })} />
         <Field label="Следующая тренировка" value={client.nextWorkout} onChange={(nextWorkout) => onChange({ nextWorkout })} />
+        <Field label="Метка (VIP, Новый, На паузе...)" value={client.tag || ""} onChange={(tag) => onChange({ tag: tag || undefined })} />
+        <Field label="Дата следующей оплаты" type="date" value={client.nextPaymentDate || ""} onChange={(nextPaymentDate) => onChange({ nextPaymentDate: nextPaymentDate || undefined })} />
       </div>
 
       <div className="app-card rounded-2xl p-4">
@@ -888,12 +926,75 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
       <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
       <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
       <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
+      <ClientNotes clientId={client.id} coachId={coachId} />
       <CoachStrengthProgress records={strengthRecords} />
       <button onClick={onDelete} className="btn btn-danger btn-md"><Trash2 size={16} /> Удалить клиента</button>
     </div>
   );
 };
 
+
+const ClientNotes = ({ clientId, coachId }: { clientId: string; coachId: string }) => {
+  const [notes, setNotes] = useState<ClientNote[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    if (!isSupabaseConfigured) { setNotes([]); setLoading(false); return; }
+    fetchClientNotes(clientId)
+      .then((next) => { if (!cancelled) setNotes(next); })
+      .catch(() => { if (!cancelled) setNotes([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const addNote = async () => {
+    if (!text.trim() || !isSupabaseConfigured || !coachId) return;
+    try {
+      const note = await createClientNote(coachId, clientId, text.trim());
+      setNotes((current) => [note, ...current]);
+      setText("");
+      setStatus("");
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось сохранить заметку"));
+    }
+  };
+
+  const removeNote = async (noteId: string) => {
+    try {
+      await deleteClientNote(noteId);
+      setNotes((current) => current.filter((note) => note.id !== noteId));
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось удалить заметку"));
+    }
+  };
+
+  return (
+    <div className="app-card rounded-2xl p-4">
+      <h3 className="text-xl font-bold">Заметки по клиенту</h3>
+      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Видны только тебе — клиент их не видит.</p>
+      <TextArea label="Новая заметка" value={text} onChange={setText} rows={2} />
+      <button type="button" disabled={!text.trim()} onClick={addNote} className="btn btn-secondary btn-md glass mt-2">Добавить заметку</button>
+      {status && <p className="text-sm mt-3" style={{ color: "#ff8a98" }}>{status}</p>}
+      <div className="space-y-3 mt-4">
+        {loading && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Загружаем...</p>}
+        {!loading && !notes.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Заметок пока нет.</p>}
+        {notes.map((note) => (
+          <div key={note.id} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
+            <p className="text-sm" style={{ color: "var(--ink-2)" }}>{note.text}</p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-xs" style={{ color: "var(--ink-3)" }}>{new Date(note.createdAt).toLocaleString("ru-RU")}</span>
+              <button type="button" onClick={() => removeNote(note.id)} className="text-xs font-semibold shrink-0" style={{ color: "#ff8a98" }}>Удалить</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const CoachStrengthProgress = ({ records }: { records: StrengthRecord[] }) => {
   const [groupFilter, setGroupFilter] = useState("all");
@@ -1062,6 +1163,10 @@ const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, onChang
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Название недельного плана" value={draft.title} onChange={(title) => { setDraft({ ...draft, title }); setStatus(""); }} />
+        <label className="flex items-center gap-2 text-sm mt-4 md:mt-0 md:self-end md:mb-2.5" style={{ color: "var(--ink-2)" }}>
+          <input type="checkbox" checked={Boolean(draft.isTemplate)} onChange={(event) => { setDraft({ ...draft, isTemplate: event.target.checked }); setStatus(""); }} />
+          Это шаблон — легко находить и копировать для новых клиентов
+        </label>
       </div>
       <TextArea label="Общие заметки к плану" value={draft.notes} onChange={(notes) => { setDraft({ ...draft, notes }); setStatus(""); }} />
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -7,6 +7,9 @@ import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
 import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket } from "../lib/db";
 import CalendarView from "../components/CalendarView";
+import HoloCard from "../components/HoloCard";
+import ProgressRing from "../components/ProgressRing";
+import { AlertBanner, AlertLine } from "../components/AlertBanner";
 import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type Application = {
@@ -464,9 +467,9 @@ const CoachDashboard = () => {
         {syncStatus && <div className="relative z-10 mb-4 app-card rounded-2xl p-4 text-sm" style={{ color: syncStatus.endsWith("...") || syncStatus === "План назначен выбранным клиентам" ? "var(--ink-2)" : "#ff8a98" }}>{syncStatus}</div>}
 
         {tab === "overview" && <div className="relative z-10 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
-          {clients.some(needsPlanAttention) && <div className="app-card rounded-2xl p-4" style={{ borderColor: "rgba(255,184,77,.35)", background: "rgba(255,184,77,.08)" }}><p className="font-semibold" style={{ color: "#ffb84d" }}>План не продлевается сам</p><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</p><button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button></div>}
-          {clients.some(needsActivityAttention) && <div className="app-card rounded-2xl p-4" style={{ borderColor: "rgba(255,138,152,.35)", background: "rgba(255,138,152,.08)" }}><p className="font-semibold" style={{ color: "#ff8a98" }}>Давно не отмечались</p><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{`${INACTIVITY_DAYS_THRESHOLD}+ дней без отметки тренировки: `}{clients.filter(needsActivityAttention).map((c) => c.name).join(", ")}.</p><button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button></div>}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" ring={average} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
+          {clients.some(needsPlanAttention) && <AlertBanner level="warning" title="План не продлевается сам" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
+          {clients.some(needsActivityAttention) && <AlertBanner level="danger" title="Давно не отмечались" action={<button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button>}>{`${INACTIVITY_DAYS_THRESHOLD}+ дней без отметки тренировки: `}{clients.filter(needsActivityAttention).map((c) => c.name).join(", ")}.</AlertBanner>}
           <Panel title="Активность клиентов" subtitle="отметки тренировок по неделям, все клиенты вместе"><WeeklyActivityChart buckets={weeklyActivity} /></Panel>
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
@@ -476,10 +479,10 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><ClientEditor key={selectedClient.id} client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
@@ -520,13 +523,17 @@ const NavList = ({ items, activeTab, messageCount, onSelect }: { items: NavItem[
   </div>
 );
 
-const Metric = ({ title, value, onClick, hint }: { title: string; value: string | number; onClick?: () => void; hint?: string }) => {
-  const content = <><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b>{hint && <span className="text-xs mt-3 inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent)" }}>{hint} →</span>}</>;
-  if (onClick) return <button onClick={onClick} className="stat-tile glass rounded-3xl p-5 text-left transition hover:-translate-y-0.5 hover:border-[rgba(104,225,253,.32)]">{content}</button>;
-  return <div className="stat-tile glass rounded-3xl p-5">{content}</div>;
+const Metric = ({ title, value, ring, onClick, hint }: { title: string; value?: string | number; ring?: number; onClick?: () => void; hint?: string }) => {
+  const content = <>
+    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p>
+    {ring !== undefined ? <div className="mt-3 flex items-center"><ProgressRing percent={ring} size={56} strokeWidth={5} /></div> : <b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b>}
+    {hint && <span className="text-xs mt-3 inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent)" }}>{hint} →</span>}
+  </>;
+  if (onClick) return <HoloCard className="stat-tile glass rounded-3xl"><button onClick={onClick} className="w-full h-full text-left p-5">{content}</button></HoloCard>;
+  return <HoloCard className="stat-tile glass rounded-3xl p-5">{content}</HoloCard>;
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ffb84d" }}>План закончился или заканчивается — нужно продлить</p>}{needsActivityAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ff8a98" }}>{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</p>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <AlertLine level="warning">План закончился или заканчивается — нужно продлить</AlertLine>}{needsActivityAttention(c) && <AlertLine level="danger">{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</AlertLine>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) => (
   <label className="relative block">
     <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-3)" }} />
@@ -536,15 +543,25 @@ const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange
 const WeeklyActivityChart = ({ buckets }: { buckets: WeeklyActivityBucket[] }) => {
   if (!buckets.length) return <p style={{ color: "var(--ink-2)" }}>Пока нет данных — появятся, как только клиенты начнут отмечать тренировки.</p>;
   const max = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  const thisWeek = buckets[buckets.length - 1]?.count ?? 0;
+  const lastWeek = buckets[buckets.length - 2]?.count;
+  const trend = lastWeek === undefined ? null : thisWeek - lastWeek;
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 items-end" style={{ height: 160 }}>
-      {buckets.map((bucket) => (
-        <div key={bucket.weekStart} className="flex flex-col items-center gap-2 h-full justify-end">
-          <span className="text-sm font-semibold">{bucket.count}</span>
-          <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, (bucket.count / max) * 100)}px`, background: "linear-gradient(180deg,var(--accent),var(--secondary-accent))" }} />
-          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>{bucket.weekStart.slice(5)}</span>
-        </div>
-      ))}
+    <div>
+      {trend !== null && (
+        <p className="text-sm mb-4 font-semibold" style={{ color: trend > 0 ? "var(--accent)" : trend < 0 ? "#ff8a98" : "var(--ink-3)" }}>
+          {trend === 0 ? "Как на прошлой неделе" : `${trend > 0 ? "↑" : "↓"} ${Math.abs(trend)} к прошлой неделе`}
+        </p>
+      )}
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 items-end" style={{ height: 160 }}>
+        {buckets.map((bucket) => (
+          <div key={bucket.weekStart} className="flex flex-col items-center gap-2 h-full justify-end">
+            <span className="text-sm font-semibold">{bucket.count}</span>
+            <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, (bucket.count / max) * 100)}px`, background: "linear-gradient(180deg,var(--accent),var(--secondary-accent))" }} />
+            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>{bucket.weekStart.slice(5)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -633,7 +650,7 @@ const MessageList = ({ messages, onOpenClients, onMarkRead }: { messages: Messag
 const Field = ({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) => <label className="field-label">{label}<input value={value} type={type} onChange={(e) => onChange(e.target.value)} className="field-input" style={{ fontSize: "16px" }} /></label>;
 const TextArea = ({ label, value, onChange, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) => <label className="field-label">{label}<textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="field-input resize-none" /></label>;
 
-const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }: { client: Client; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
+const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRecords, onChange, onDelete }: { client: Client; allClients: Client[]; onSwitchClient: (id: string) => void; workouts: Workout[]; strengthRecords: StrengthRecord[]; onChange: (patch: Partial<Client>) => void; onDelete: () => void }) => {
   const [clientPassword, setClientPassword] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
@@ -764,6 +781,15 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <button type="button" onClick={() => document.getElementById("client-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass xl:hidden self-start"><ArrowLeft size={14} /> К списку клиентов</button>
+        <label className="flex items-center gap-2 text-sm sm:ml-auto" style={{ color: "var(--ink-3)" }}>
+          Клиент
+          <select value={client.id} onChange={(event) => onSwitchClient(event.target.value)} className="field-input mt-0 w-auto">
+            {allClients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Имя" value={client.name} onChange={(name) => onChange({ name })} />
         <Field label="Telegram" value={client.telegram} onChange={(telegram) => onChange({ telegram })} />
@@ -809,14 +835,14 @@ const ClientEditor = ({ client, workouts, strengthRecords, onChange, onDelete }:
             {(() => {
               const daysLeft = Math.round((new Date(currentPeriod.endDate + "T00:00:00").getTime() - new Date(toISODate(new Date()) + "T00:00:00").getTime()) / 86400000);
               if (daysLeft > 1) return null;
-              return <p className="text-sm mt-2 font-semibold" style={{ color: "#ffb84d" }}>{daysLeft <= 0 ? "План заканчивается сегодня — план на следующую неделю сам не назначится." : "План заканчивается завтра — не забудь продлить или назначить новый."}</p>;
+              return <div className="mt-2"><AlertLine level="warning">{daysLeft <= 0 ? "План заканчивается сегодня — план на следующую неделю сам не назначится." : "План заканчивается завтра — не забудь продлить или назначить новый."}</AlertLine></div>;
             })()}
             <button type="button" onClick={handleExtendPeriod} disabled={isSavingPeriod} className="btn btn-primary btn-sm mt-3">
               {isSavingPeriod ? "Продлеваем..." : "Продлить ещё на 7 дней"}
             </button>
           </div>
         ) : (
-          <p className="text-sm mb-4 font-semibold" style={{ color: "#ff8a98" }}>{client.status === "Активен" ? "У активного клиента сейчас нет плана на эту неделю — назначь новый ниже." : "На сегодня у клиента нет активного плана."}</p>
+          <div className="mb-4"><AlertLine level="danger">{client.status === "Активен" ? "У активного клиента сейчас нет плана на эту неделю — назначь новый ниже." : "На сегодня у клиента нет активного плана."}</AlertLine></div>
         )}
 
         <p className="text-sm font-semibold mb-2" style={{ color: "var(--ink-2)" }}>Назначить новый план</p>
@@ -938,7 +964,7 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; clients: Client[]; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
+const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; allWorkouts: Workout[]; onSwitchWorkout: (id: string) => void; clients: Client[]; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
   const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
@@ -1016,6 +1042,15 @@ const WorkoutEditor = ({ workout, clients, onChange, onDelete, onDuplicate, onBu
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <button type="button" onClick={() => document.getElementById("workout-list")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="btn btn-secondary btn-sm glass xl:hidden self-start"><ArrowLeft size={14} /> К списку планов</button>
+        <label className="flex items-center gap-2 text-sm sm:ml-auto" style={{ color: "var(--ink-3)" }}>
+          План
+          <select value={workout.id} onChange={(event) => onSwitchWorkout(event.target.value)} className="field-input mt-0 w-auto">
+            {allWorkouts.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+          </select>
+        </label>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Название недельного плана" value={draft.title} onChange={(title) => { setDraft({ ...draft, title }); setStatus(""); }} />
       </div>

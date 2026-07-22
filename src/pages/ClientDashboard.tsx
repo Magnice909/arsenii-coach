@@ -6,6 +6,8 @@ import { Client, DayWorkout, getUser, logout, Message, Workout } from "../lib/st
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import CalendarView from "../components/CalendarView";
+import HoloCard from "../components/HoloCard";
+import ProgressRing from "../components/ProgressRing";
 import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type NavItem = { id: string; label: string; icon: LucideIcon };
@@ -294,21 +296,25 @@ const ClientDashboard = () => {
 
         {tab === "today" && <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="stat-tile glass rounded-3xl p-5 flex items-center gap-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: "rgba(255,138,77,.16)", color: "#ff8a4d" }}><Flame size={22} /></span>
-              <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Серия</p><b className="text-2xl block tracking-tight">{streak} {streak === 1 ? "день" : "дня подряд"}</b></div>
-            </div>
-            <div className="stat-tile glass rounded-3xl p-5 flex items-center gap-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}><TrendingUp size={22} /></span>
-              <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>За эту неделю</p><b className="text-2xl block tracking-tight">{client.progress}%</b></div>
-            </div>
+            <HoloCard className="stat-tile glass rounded-3xl">
+              <div className="p-5 flex items-center gap-4">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: "rgba(255,138,77,.16)", color: "#ff8a4d" }}><Flame size={22} /></span>
+                <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Серия</p><b className="text-2xl block tracking-tight">{streak} {streak === 1 ? "день" : "дня подряд"}</b></div>
+              </div>
+            </HoloCard>
+            <HoloCard className="stat-tile glass rounded-3xl">
+              <div className="p-5 flex items-center gap-4">
+                <ProgressRing percent={client.progress} size={48} strokeWidth={5} />
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Выполнено за эту неделю</p>
+              </div>
+            </HoloCard>
           </div>
           <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>
         </div>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={activeWeeklyPlan} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
-                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
+                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" ring={client.progress} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
         {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Сообщения от тренера</h3><p className="mt-2 text-sm mb-4" style={{ color: "var(--ink-2)" }}>Если Арсений напишет через кабинет, сообщение появится здесь.</p>{!notifications.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Новых сообщений пока нет.</p>}<div className="space-y-3">{notifications.map((m) => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span><button onClick={() => markNotificationSeen(m.id)} className="btn btn-secondary btn-sm glass mt-3">Прочитано</button></div>)}</div></div><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
       </section>
@@ -613,7 +619,7 @@ const ClientCalendarDay = ({ date, entries }: { date: string; entries: CalendarW
   );
 };
 
-const Metric = ({ title, value }: { title: string; value: string }) => <div className="stat-tile glass rounded-3xl p-5"><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b></div>;
+const Metric = ({ title, value, ring }: { title: string; value?: string; ring?: number }) => <HoloCard className="stat-tile glass rounded-3xl p-5"><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p>{ring !== undefined ? <div className="mt-3"><ProgressRing percent={ring} size={56} strokeWidth={5} /></div> : <b className="text-[2.1rem] leading-none mt-3 block tracking-tight">{value}</b>}</HoloCard>;
 const Info = ({ title, value }: { title: string; value: string }) => <div className="app-card rounded-2xl p-5"><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>{title}</p><b className="text-lg mt-2 block">{value}</b></div>;
 
 export default ClientDashboard;

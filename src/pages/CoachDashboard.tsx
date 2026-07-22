@@ -1154,41 +1154,25 @@ const exerciseMuscleGroups = ["Грудь", "Спина", "Ноги", "Плеч�
 // поэтому их тренер вписывает вручную при каждой вставке, а не хранит
 // заранее зафиксированными в шаблоне.
 const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onInsert: (text: string) => void; onAdd: (label: string, muscleGroup: string) => void; onRemove: (id: string) => void }) => {
-  const [selectedId, setSelectedId] = useState("");
-  const [setsReps, setSetsReps] = useState("");
+  const [selected, setSelected] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newMuscleGroup, setNewMuscleGroup] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
 
-  const insert = () => {
-    const item = library.find((candidate) => candidate.id === selectedId);
-    if (!item) return;
-    onInsert(setsReps.trim() ? `${item.label} — ${setsReps.trim()}` : item.label);
-    setSelectedId("");
-    setSetsReps("");
-  };
-
   return (
     <div className="rounded-2xl p-3 mt-3 mb-1" style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--line)" }}>
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-xs flex-1 min-w-[180px]" style={{ color: "var(--ink-3)" }}>
-          Упражнение из библиотеки
-          <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="field-input mt-1">
-            <option value="">Выбрать...</option>
-            {library.map((item) => <option key={item.id} value={item.id}>{item.label}{item.muscleGroup ? ` (${item.muscleGroup})` : ""}</option>)}
-          </select>
-        </label>
-        <label className="text-xs" style={{ color: "var(--ink-3)" }}>
-          Подходы×повторы
-          <input value={setsReps} onChange={(event) => setSetsReps(event.target.value)} placeholder="4×8" className="field-input mt-1 w-28" />
-        </label>
-        <button type="button" disabled={!selectedId} onClick={insert} className="btn btn-secondary btn-sm glass">Вставить</button>
+      <div className="flex flex-wrap gap-2 items-center">
+        <select value={selected} onChange={(event) => setSelected(event.target.value)} className="field-input mt-0 flex-1 min-w-[180px]">
+          <option value="">Из библиотеки упражнений...</option>
+          {library.map((item) => <option key={item.id} value={item.label}>{item.label}{item.muscleGroup ? ` (${item.muscleGroup})` : ""}</option>)}
+        </select>
+        <button type="button" disabled={!selected} onClick={() => { onInsert(selected); setSelected(""); }} className="btn btn-secondary btn-sm glass">Вставить</button>
         <button type="button" onClick={() => setManageOpen((value) => !value)} className="btn btn-ghost btn-sm">{manageOpen ? "Скрыть библиотеку" : "Управлять библиотекой"}</button>
       </div>
       {manageOpen && (
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_auto] gap-2">
-            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Название упражнения, например: Жим лёжа" className="field-input mt-0" />
+            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Например: Жим лёжа — 4×8" className="field-input mt-0" />
             <select value={newMuscleGroup} onChange={(event) => setNewMuscleGroup(event.target.value)} className="field-input mt-0">
               <option value="">Группа мышц</option>
               {exerciseMuscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}

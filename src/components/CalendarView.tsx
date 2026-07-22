@@ -57,8 +57,8 @@ const CalendarView = ({ entriesByDate, loading, onMonthChange, renderDay }: Cale
               onClick={() => setSelectedDate((current) => (current === iso ? null : iso))}
               className="aspect-square rounded-xl p-1.5 flex flex-col items-center justify-start gap-1 text-sm transition-colors"
               style={{
-                background: isSelected ? "rgba(104,225,253,.18)" : "rgba(255,255,255,.03)",
-                border: isToday ? "1px solid rgba(104,225,253,.55)" : "1px solid transparent",
+                background: isSelected ? "rgba(52,231,166,.18)" : "rgba(255,255,255,.03)",
+                border: isToday ? "1px solid rgba(52,231,166,.55)" : "1px solid transparent",
                 color: isCurrentMonth ? "var(--ink)" : "var(--ink-3)",
                 opacity: isCurrentMonth ? 1 : 0.45,
               }}
@@ -68,7 +68,7 @@ const CalendarView = ({ entriesByDate, loading, onMonthChange, renderDay }: Cale
                 <span
                   className="min-w-[16px] h-4 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center"
                   style={{
-                    background: allCompleted ? "rgba(104,225,253,.22)" : "rgba(255,255,255,.10)",
+                    background: allCompleted ? "rgba(52,231,166,.22)" : "rgba(255,255,255,.10)",
                     color: allCompleted ? "var(--accent)" : "var(--ink-2)",
                   }}
                   aria-label={allCompleted ? "Все тренировки выполнены" : "Есть тренировки"}

@@ -54,8 +54,8 @@ const Index = () => {
       <div className="min-h-screen relative overflow-hidden" style={{ background: "var(--bg)" }}>
         <div className="grid-overlay fixed inset-0 opacity-60 pointer-events-none" />
         <div className="aurora-a fixed -top-44 left-1/2 h-[560px] w-[560px] rounded-full blur-3xl pointer-events-none" style={{ background: "var(--accent-glow)" }} />
-        <div className="aurora-b fixed top-1/3 -right-40 h-[430px] w-[430px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(139,92,246,.18)" }} />
-        <div className="aurora-c fixed bottom-0 left-10 h-[380px] w-[380px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(255,138,216,.10)" }} />
+        <div className="aurora-b fixed top-1/3 -right-40 h-[430px] w-[430px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(20,184,166,.18)" }} />
+        <div className="aurora-c fixed bottom-0 left-10 h-[380px] w-[380px] rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(94,234,212,.10)" }} />
 
         <header className="fixed top-5 left-1/2 z-40 w-[calc(100%-32px)] max-w-6xl -translate-x-1/2 glass rounded-full px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -110,7 +110,7 @@ const Index = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {features.map((f, i) => (
                 <ScrollReveal key={f.title} delay={i * .06}>
-                  <HoloCard className="glass rounded-[1.75rem] h-full transition-colors hover:border-[rgba(104,225,253,.34)]">
+                  <HoloCard className="glass rounded-[1.75rem] h-full transition-colors hover:border-[rgba(52,231,166,.34)]">
                     <article className="p-6 h-full">
                       <div className="text-3xl mb-10">{f.icon}</div>
                       <h3 className="text-xl font-bold tracking-[-.02em]">{f.title}</h3>
@@ -133,8 +133,8 @@ const Index = () => {
                   0px высоты и были невидимы, хотя сама ссылка на фото была
                   рабочей. */}
               <HoloCard className="rounded-[2rem] glass h-[500px]" flat>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_45%)]" />
-                {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onLoad={() => { photoLoadedRef.current = true; }} onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(104,225,253,.22)] to-[rgba(139,92,246,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(52,231,166,.18),transparent_45%)]" />
+                {settings.photoDataUrl && !photoFailed ? <img src={settings.photoDataUrl} alt="Фото Арсения" onLoad={() => { photoLoadedRef.current = true; }} onError={() => setPhotoFailed(true)} className="absolute inset-0 h-full w-full object-cover object-center" /> : <div className="absolute inset-6 rounded-[1.5rem] bg-gradient-to-br from-[rgba(52,231,166,.22)] to-[rgba(20,184,166,.18)] border border-white/10 grid place-items-center text-center"><div><div className="text-6xl font-extrabold tracking-[-.02em]">AC</div><p style={{ color: "var(--ink-2)" }}>место для фото Арсения</p></div></div>}
               </HoloCard>
             </ScrollReveal>
             <ScrollReveal delay={0.1}>

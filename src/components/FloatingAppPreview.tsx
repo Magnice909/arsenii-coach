@@ -12,7 +12,7 @@ const FloatingAppPreview = () => {
     <motion.div initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: .8, delay: .25 }}>
       <HoloCard className="glass rounded-[2rem]" intensity={5}>
         <div className="p-5 md:p-6 relative">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(104,225,253,.18),transparent_42%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(52,231,166,.18),transparent_42%)]" />
           <div className="relative flex items-center justify-between mb-20 text-sm" style={{ color: "var(--ink-3)" }}><span>20:26</span><span>● ● ●</span></div>
           <div className="relative">
             <div className="eyebrow mb-3">Приложение тренера</div>
@@ -26,7 +26,7 @@ const FloatingAppPreview = () => {
               ))}
             </div>
             <div className="grid grid-cols-5 gap-3 h-24 items-end mt-6">
-              {[42, 74, 58, 91, 67].map((h) => <div key={h} className="rounded-t-xl" style={{ height: `${h}%`, background: "linear-gradient(180deg, var(--accent), rgba(104,225,253,.08))" }} />)}
+              {[42, 74, 58, 91, 67].map((h) => <div key={h} className="rounded-t-xl" style={{ height: `${h}%`, background: "linear-gradient(180deg, var(--accent), rgba(52,231,166,.08))" }} />)}
             </div>
           </div>
         </div>

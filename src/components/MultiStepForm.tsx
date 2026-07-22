@@ -14,7 +14,7 @@ type Answers = {
 };
 
 const initialAnswers: Answers = { name: "", goal: "", duration: "", obstacle: "", commitment: "", startTimeline: "", lookingFor: "", readyToInvest: "", telegram: "@", email: "", instagram: "" };
-const inputClass = "w-full px-4 py-3 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[rgba(104,225,253,0.30)]";
+const inputClass = "w-full px-4 py-3 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[rgba(52,231,166,0.30)]";
 const inputStyle = { background: "var(--bg)", border: "1px solid var(--line-2)", color: "var(--ink)" };
 
 const formatTelegram = (raw: string): string => raw.trim().startsWith("@") ? raw.trim() : raw.trim();
@@ -120,7 +120,7 @@ const MultiStepForm = () => {
 };
 
 const StepWrapper = ({ question, children }: { question: string; children: React.ReactNode }) => <div><h3 className="text-2xl md:text-3xl font-bold tracking-[-.02em] mb-5">{question}</h3>{children}</div>;
-const OptionList = ({ options, selected, onSelect }: { options: string[]; selected: string; onSelect: (value: string) => void }) => <div className="space-y-3">{options.map((option) => <button key={option} type="button" onClick={() => onSelect(option)} className="w-full text-left rounded-xl px-4 py-3 transition-all" style={{ background: selected === option ? "rgba(104,225,253,.16)" : "var(--bg)", border: selected === option ? "1px solid rgba(104,225,253,.45)" : "1px solid var(--line-2)", color: "var(--ink)" }}>{option}</button>)}</div>;
+const OptionList = ({ options, selected, onSelect }: { options: string[]; selected: string; onSelect: (value: string) => void }) => <div className="space-y-3">{options.map((option) => <button key={option} type="button" onClick={() => onSelect(option)} className="w-full text-left rounded-xl px-4 py-3 transition-all" style={{ background: selected === option ? "rgba(52,231,166,.16)" : "var(--bg)", border: selected === option ? "1px solid rgba(52,231,166,.45)" : "1px solid var(--line-2)", color: "var(--ink)" }}>{option}</button>)}</div>;
 const TextInput = ({ value, onChange, placeholder, onNext }: { value: string; onChange: (v: string) => void; placeholder: string; onNext: () => void }) => <div className="space-y-4"><textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={4} className={inputClass} style={inputStyle} /><button type="button" onClick={onNext} disabled={!value.trim()} className="w-full rounded-xl py-3 font-semibold disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--bg)" }}>Продолжить</button></div>;
 
 export default MultiStepForm;

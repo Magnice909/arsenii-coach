@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Apple, Award, CalendarDays, CheckCircle2, ClipboardList, Download, Dumbbell, Flame, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Scale, Send, Target, TrendingUp, X, type LucideIcon } from "lucide-react";
+import { Apple, Award, CalendarDays, CheckCircle2, ClipboardList, Download, Dumbbell, Flame, History as HistoryIcon, Image as ImageIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Scale, Send, Target, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
-import { addDaysToISO, BodyWeightRecord, CompletionHistoryItem, StrengthRecord, createBodyWeightRecord, createNotification, createStrengthRecord, fetchClientBodyWeightRecords, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, fetchMyNotifications, getCompletionForToday, getDayWorkout, markNotificationRead, markWorkoutCompleted, PlanPeriod, weekDays, NutritionLog, fetchNutritionLogs, createNutritionLog, deleteNutritionLog, fetchClientGoal, saveClientGoal, fetchReminderPrefs, saveReminderPrefs } from "../lib/db";
+import { addDaysToISO, BodyWeightRecord, CompletionHistoryItem, StrengthRecord, createBodyWeightRecord, createNotification, createStrengthRecord, fetchClientBodyWeightRecords, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, fetchMyNotifications, getCompletionForToday, getDayWorkout, markNotificationRead, markWorkoutCompleted, PlanPeriod, weekDays, NutritionLog, fetchNutritionLogs, createNutritionLog, deleteNutritionLog, fetchClientGoal, saveClientGoal, fetchReminderPrefs, saveReminderPrefs, ProgressPhoto, fetchClientProgressPhotos, uploadProgressPhoto, deleteProgressPhoto } from "../lib/db";
 import { Client, DayWorkout, getUser, logout, Message, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
@@ -67,6 +67,7 @@ const ClientDashboard = () => {
   const [bodyWeightRecords, setBodyWeightRecords] = useState<BodyWeightRecord[]>([]);
   const [targetWeightKg, setTargetWeightKg] = useState<number | undefined>(undefined);
   const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
+  const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
   const [notifications, setNotifications] = useState<Message[]>([]);
   const [pushStatus, setPushStatus] = useState("");
   const [reminderHour, setReminderHour] = useState<number | undefined>(undefined);
@@ -205,6 +206,7 @@ const ClientDashboard = () => {
           setBodyWeightRecords(await fetchClientBodyWeightRecords(data.client.id, user.id));
           setTargetWeightKg(await fetchClientGoal(data.client.id));
           setNutritionLogs(await fetchNutritionLogs(data.client.id, user.id));
+          setProgressPhotos(await fetchClientProgressPhotos(data.client.id, user.id));
         }
         setNotifications(await fetchMyNotifications());
         const prefs = await fetchReminderPrefs(user.id);
@@ -380,7 +382,7 @@ const ClientDashboard = () => {
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером"><button type="button" onClick={downloadPlanAsText} className="btn btn-secondary btn-sm glass mb-4"><Download size={14} /> Скачать план</button>{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={activeWeeklyPlan} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
-                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" ring={client.progress} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} targetWeightKg={targetWeightKg} onSaveGoal={setTargetWeightKg} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
+                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" ring={client.progress} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} targetWeightKg={targetWeightKg} onSaveGoal={setTargetWeightKg} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><ProgressPhotos clientId={client.id} userId={user?.id || ""} photos={progressPhotos} onAdd={(photo) => setProgressPhotos((current) => [photo, ...current])} onRemove={(id) => setProgressPhotos((current) => current.filter((photo) => photo.id !== id))} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p><NutritionDiary clientId={client.id} userId={user?.id || ""} logs={nutritionLogs} onAdd={(log) => setNutritionLogs((current) => [log, ...current])} onDelete={(id) => setNutritionLogs((current) => current.filter((log) => log.id !== id))} /></Panel>}
         {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Сообщения от тренера</h3><p className="mt-2 text-sm mb-4" style={{ color: "var(--ink-2)" }}>Если Арсений напишет через кабинет, сообщение появится здесь.</p>{!notifications.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Новых сообщений пока нет.</p>}<div className="space-y-3">{notifications.map((m) => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span><button onClick={() => markNotificationSeen(m.id)} className="btn btn-secondary btn-sm glass mt-3">Прочитано</button></div>)}</div></div><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}{hasPushSubscription && <div className="mt-4"><label className="block text-sm" style={{ color: "var(--ink-3)" }}>Во сколько напоминать о завтрашней тренировке<select value={reminderEnabled ? String(reminderHour ?? "") : "off"} onChange={(event) => { const value = event.target.value; if (value === "off") { setReminderEnabled(false); } else { setReminderEnabled(true); setReminderHour(Number(value)); } }} className="field-input"><option value="off">Не напоминать</option>{Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select></label><button onClick={saveReminder} className="btn btn-secondary btn-sm glass mt-3">Сохранить время напоминания</button>{reminderStatus && <p className="mt-2 text-sm" style={{ color: reminderStatus.includes("сохранен") ? "var(--accent)" : "#ff8a98" }}>{reminderStatus}</p>}</div>}</div></Panel>}
       </section>
@@ -571,6 +573,64 @@ const WeightGoal = ({ clientId, userId, sortedRecords, targetWeightKg, onSave }:
           <p className="text-sm" style={{ color: "var(--ink-2)" }}>Сейчас {latestWeight} кг, цель {targetWeightKg} кг</p>
         </div>
       )}
+    </div>
+  );
+};
+
+const ProgressPhotos = ({ clientId, userId, photos, onAdd, onRemove }: { clientId: string; userId: string; photos: ProgressPhoto[]; onAdd: (photo: ProgressPhoto) => void; onRemove: (id: string) => void }) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [takenDate, setTakenDate] = useState(toISODate(new Date()));
+  const [status, setStatus] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const upload = async () => {
+    setStatus("");
+    if (!file) {
+      setStatus("Сначала выбери фото");
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const photo = await uploadProgressPhoto(clientId, userId, file, takenDate);
+      onAdd(photo);
+      setFile(null);
+      setStatus("Фото добавлено");
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось загрузить фото"));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const remove = async (photo: ProgressPhoto) => {
+    try {
+      await deleteProgressPhoto(photo.id, photo.storagePath);
+      onRemove(photo.id);
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось удалить фото"));
+    }
+  };
+
+  return (
+    <div className="app-card rounded-2xl p-5 mt-5">
+      <h3 className="text-2xl font-bold flex items-center gap-2"><ImageIcon size={20} /> Прогресс-фото</h3>
+      <p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>Видны только тебе и тренеру.</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Фото<input type="file" accept="image/*" onChange={(event) => setFile(event.target.files?.[0] || null)} className="field-input" style={{ paddingTop: 8, paddingBottom: 8 }} /></label>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={takenDate} onChange={(event) => setTakenDate(event.target.value)} className="field-input" style={{ fontSize: "16px", WebkitAppearance: "none" }} /></label>
+        <div className="flex items-end"><button onClick={upload} disabled={isUploading} className="btn btn-primary btn-md w-full"><Plus size={16} /> {isUploading ? "Загружаем..." : "Добавить"}</button></div>
+      </div>
+      {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлено") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+        {!photos.length && <p className="text-sm col-span-full" style={{ color: "var(--ink-3)" }}>Фото пока нет.</p>}
+        {photos.map((photo) => (
+          <div key={photo.id} className="relative">
+            <a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.takenDate} className="w-full aspect-square object-cover rounded-2xl" /></a>
+            <p className="text-xs mt-1 text-center" style={{ color: "var(--ink-3)" }}>{new Date(photo.takenDate + "T00:00:00").toLocaleDateString("ru-RU")}</p>
+            <button type="button" onClick={() => remove(photo)} aria-label="Удалить фото" className="absolute top-1.5 right-1.5 rounded-full h-6 w-6 grid place-items-center text-xs font-bold" style={{ background: "rgba(0,0,0,.55)", color: "#ff8a98" }}>×</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

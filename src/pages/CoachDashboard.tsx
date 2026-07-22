@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Tag, Trash2, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, Copy, Download, Dumbbell, Image as ImageIcon, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Scale, Search, Send, Settings, StickyNote, Tag, Trash2, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket, ClientNote, fetchClientNotes, createClientNote, deleteClientNote } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket, ClientNote, fetchClientNotes, createClientNote, deleteClientNote, CompletionHistoryItem, fetchCoachClientCompletionHistory, BodyWeightRecord, fetchCoachClientBodyWeightRecords, ExerciseLibraryItem, fetchExerciseLibrary, createExerciseLibraryItem, deleteExerciseLibraryItem, ProgressPhoto, fetchCoachClientProgressPhotos } from "../lib/db";
 import CalendarView from "../components/CalendarView";
 import HoloCard from "../components/HoloCard";
 import ProgressRing from "../components/ProgressRing";
@@ -253,6 +253,21 @@ const CoachDashboard = () => {
         })
         .catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить клиента")));
     }
+  };
+
+  const exportClientsCsv = () => {
+    const header = ["Имя", "Telegram", "Email", "Статус", "Метка", "Прогресс %", "Дата след. оплаты", "Цель"];
+    const rows = clients.map((c) => [c.name, c.telegram, c.email, c.status, c.tag || "", String(c.progress), c.nextPaymentDate || "", (c.goal || "").replace(/\n/g, " ")]);
+    const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((row) => row.map(escape).join(",")).join("\r\n");
+    // BOM в начале файла — иначе Excel открывает кириллицу в CSV как кракозябры.
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clients-${toISODate(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const addClient = async () => {
@@ -514,10 +529,10 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" />{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><button type="button" onClick={exportClientsCsv} className="btn btn-secondary btn-sm glass mt-3"><Download size={14} /> Экспорт в CSV</button>{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} coachId={user?.id || ""} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
 
         {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
@@ -706,6 +721,7 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
   const [week2WorkoutId, setWeek2WorkoutId] = useState(workouts[0]?.id || "");
   const [planActionStatus, setPlanActionStatus] = useState("");
   const [isSavingPeriod, setIsSavingPeriod] = useState(false);
+  const [editorTab, setEditorTab] = useState<"profile" | "plan" | "timeline" | "progress">("profile");
 
   const buildPassword = () => {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
@@ -822,6 +838,13 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
     }
   };
 
+  const editorTabs = [
+    { id: "profile" as const, label: "Профиль" },
+    { id: "plan" as const, label: "План" },
+    { id: "timeline" as const, label: "Лента" },
+    { id: "progress" as const, label: "Прогресс" },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -833,42 +856,56 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
           </select>
         </label>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="Имя" value={client.name} onChange={(name) => onChange({ name })} />
-        <Field label="Telegram" value={client.telegram} onChange={(telegram) => onChange({ telegram })} />
-        <Field label="Email" value={client.email} onChange={(email) => onChange({ email })} />
-        <Field label="Статус" value={client.status} onChange={(status) => onChange({ status })} />
-        <Field label="Прогресс, %" type="number" value={client.progress} onChange={(progress) => onChange({ progress: Math.max(0, Math.min(100, Number(progress) || 0)) })} />
-        <Field label="Следующая тренировка" value={client.nextWorkout} onChange={(nextWorkout) => onChange({ nextWorkout })} />
-        <Field label="Метка (VIP, Новый, На паузе...)" value={client.tag || ""} onChange={(tag) => onChange({ tag: tag || undefined })} />
-        <Field label="Дата следующей оплаты" type="date" value={client.nextPaymentDate || ""} onChange={(nextPaymentDate) => onChange({ nextPaymentDate: nextPaymentDate || undefined })} />
+
+      <div className="flex flex-wrap gap-2 pb-3 border-b" style={{ borderColor: "var(--line)" }}>
+        {editorTabs.map((t) => (
+          <button key={t.id} type="button" onClick={() => setEditorTab(t.id)} className={editorTab === t.id ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{t.label}</button>
+        ))}
       </div>
 
-      <div className="app-card rounded-2xl p-4">
-        <h3 className="text-xl font-bold">Аккаунт клиента</h3>
-        <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>
-          Пароль не сохраняется в коде сайта и не записывается в базу clients. Он передаётся в Supabase Auth через защищённую серверную функцию.
-        </p>
-        <div className="grid grid-cols-1 gap-3">
-          <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
-            Временный пароль клиента
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
-              <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="field-input mt-0 cursor-default" />
-              <div className="grid grid-cols-2 sm:contents gap-2">
-                <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="btn btn-secondary btn-md glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
-                <button type="button" onClick={generatePassword} className="btn btn-secondary btn-md glass">Сгенерировать</button>
-              </div>
-            </div>
-          </label>
-          <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="btn btn-primary btn-md">
-            {client.userId ? (isCreatingAccount ? "Обновляю..." : "Обновить пароль") : (isCreatingAccount ? "Создаю..." : "Создать аккаунт")}
-          </button>
+      {editorTab === "profile" && <>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Имя" value={client.name} onChange={(name) => onChange({ name })} />
+          <Field label="Telegram" value={client.telegram} onChange={(telegram) => onChange({ telegram })} />
+          <Field label="Email" value={client.email} onChange={(email) => onChange({ email })} />
+          <Field label="Статус" value={client.status} onChange={(status) => onChange({ status })} />
+          <Field label="Прогресс, %" type="number" value={client.progress} onChange={(progress) => onChange({ progress: Math.max(0, Math.min(100, Number(progress) || 0)) })} />
+          <Field label="Следующая тренировка" value={client.nextWorkout} onChange={(nextWorkout) => onChange({ nextWorkout })} />
+          <Field label="Метка (VIP, Новый, На паузе...)" value={client.tag || ""} onChange={(tag) => onChange({ tag: tag || undefined })} />
+          <Field label="Дата следующей оплаты" type="date" value={client.nextPaymentDate || ""} onChange={(nextPaymentDate) => onChange({ nextPaymentDate: nextPaymentDate || undefined })} />
         </div>
-        {client.userId && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>Клиентский аккаунт привязан. Пароль можно в любой момент сгенерировать заново и обновить.</p>}
-        {accountStatus && <p className="text-sm mt-3" style={{ color: ["создан", "сгенерирован", "обновлён", "привязан", "Скопируй"].some((word) => accountStatus.includes(word)) ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
-      </div>
 
-      <div className="app-card rounded-2xl p-4">
+        <div className="app-card rounded-2xl p-4">
+          <h3 className="text-xl font-bold">Аккаунт клиента</h3>
+          <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>
+            Пароль не сохраняется в коде сайта и не записывается в базу clients. Он передаётся в Supabase Auth через защищённую серверную функцию.
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            <label className="block text-sm" style={{ color: "var(--ink-3)" }}>
+              Временный пароль клиента
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+                <input value={clientPassword} type={showClientPassword ? "text" : "password"} readOnly className="field-input mt-0 cursor-default" />
+                <div className="grid grid-cols-2 sm:contents gap-2">
+                  <button type="button" onClick={() => setShowClientPassword((value) => !value)} className="btn btn-secondary btn-md glass">{showClientPassword ? "Скрыть" : "Показать"}</button>
+                  <button type="button" onClick={generatePassword} className="btn btn-secondary btn-md glass">Сгенерировать</button>
+                </div>
+              </div>
+            </label>
+            <button disabled={isCreatingAccount || !clientPassword} onClick={createAccount} className="btn btn-primary btn-md">
+              {client.userId ? (isCreatingAccount ? "Обновляю..." : "Обновить пароль") : (isCreatingAccount ? "Создаю..." : "Создать аккаунт")}
+            </button>
+          </div>
+          {client.userId && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>Клиентский аккаунт привязан. Пароль можно в любой момент сгенерировать заново и обновить.</p>}
+          {accountStatus && <p className="text-sm mt-3" style={{ color: ["создан", "сгенерирован", "обновлён", "привязан", "Скопируй"].some((word) => accountStatus.includes(word)) ? "var(--accent)" : "#ff8a98" }}>{accountStatus}</p>}
+        </div>
+
+        <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
+        <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
+        <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
+        <button onClick={onDelete} className="btn btn-danger btn-md"><Trash2 size={16} /> Удалить клиента</button>
+      </>}
+
+      {editorTab === "plan" && <div className="app-card rounded-2xl p-4">
         <h3 className="text-xl font-bold">Активный план</h3>
         <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Каждый период действует ровно 7 дней. По окончании недели календарь и вкладка «Сегодня» у клиента автоматически перестают его показывать.</p>
 
@@ -922,41 +959,64 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
           {isSavingPeriod ? "Создаём..." : week2Mode === "none" ? "Назначить план" : "Назначить план на 2 недели"}
         </button>
         {planActionStatus && <p className="text-sm mt-3" style={{ color: "var(--accent)" }}>{planActionStatus}</p>}
-      </div>
-      <TextArea label="Цель клиента" value={client.goal} onChange={(goal) => onChange({ goal })} />
-      <TextArea label="Питание / рекомендации" value={client.nutrition} onChange={(nutrition) => onChange({ nutrition })} />
-      <TextArea label="Комментарий тренера" value={client.comment} onChange={(comment) => onChange({ comment })} />
-      <ClientNotes clientId={client.id} coachId={coachId} />
-      <CoachStrengthProgress records={strengthRecords} />
-      <button onClick={onDelete} className="btn btn-danger btn-md"><Trash2 size={16} /> Удалить клиента</button>
+      </div>}
+
+      {editorTab === "timeline" && <ClientTimeline clientId={client.id} coachId={coachId} strengthRecords={strengthRecords} />}
+
+      {editorTab === "progress" && <>
+        <CoachStrengthProgress records={strengthRecords} />
+        <CoachBodyWeightView clientId={client.id} />
+        <CoachProgressPhotos clientId={client.id} />
+      </>}
     </div>
   );
 };
 
 
-const ClientNotes = ({ clientId, coachId }: { clientId: string; coachId: string }) => {
+type TimelineEvent = { id: string; date: string; kind: "note" | "completion" | "weight" | "strength"; label: string; detail?: string; onRemove?: () => void };
+
+const timelineIcon = (kind: TimelineEvent["kind"]) => {
+  if (kind === "note") return <StickyNote size={15} />;
+  if (kind === "completion") return <CheckCircle2 size={15} />;
+  if (kind === "weight") return <Scale size={15} />;
+  return <TrendingUp size={15} />;
+};
+
+// Единая лента: заметки тренера, отметки тренировок, вес тела и силовые
+// рекорды клиента на одной хронологической шкале, вместо разбросанных по
+// вкладкам блоков. Заметки тут же и добавляются/удаляются — своей истории
+// у ленты нет, поэтому отдельного экрана «Заметки» больше не нужно.
+const ClientTimeline = ({ clientId, coachId, strengthRecords }: { clientId: string; coachId: string; strengthRecords: StrengthRecord[] }) => {
   const [notes, setNotes] = useState<ClientNote[]>([]);
-  const [text, setText] = useState("");
+  const [completions, setCompletions] = useState<CompletionHistoryItem[]>([]);
+  const [weights, setWeights] = useState<BodyWeightRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [noteText, setNoteText] = useState("");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    if (!isSupabaseConfigured) { setNotes([]); setLoading(false); return; }
-    fetchClientNotes(clientId)
-      .then((next) => { if (!cancelled) setNotes(next); })
-      .catch(() => { if (!cancelled) setNotes([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    Promise.all([
+      fetchClientNotes(clientId),
+      fetchCoachClientCompletionHistory(clientId),
+      fetchCoachClientBodyWeightRecords(clientId),
+    ]).then(([nextNotes, nextCompletions, nextWeights]) => {
+      if (cancelled) return;
+      setNotes(nextNotes);
+      setCompletions(nextCompletions);
+      setWeights(nextWeights);
+    }).catch(() => {}).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [clientId]);
 
   const addNote = async () => {
-    if (!text.trim() || !isSupabaseConfigured || !coachId) return;
+    if (!noteText.trim() || !isSupabaseConfigured || !coachId) return;
     try {
-      const note = await createClientNote(coachId, clientId, text.trim());
+      const note = await createClientNote(coachId, clientId, noteText.trim());
       setNotes((current) => [note, ...current]);
-      setText("");
+      setNoteText("");
       setStatus("");
     } catch (error) {
       setStatus(getErrorMessage(error, "Не удалось сохранить заметку"));
@@ -972,26 +1032,96 @@ const ClientNotes = ({ clientId, coachId }: { clientId: string; coachId: string 
     }
   };
 
+  const events: TimelineEvent[] = [
+    ...notes.map((note): TimelineEvent => ({ id: `note-${note.id}`, date: note.createdAt.slice(0, 10), kind: "note", label: "Заметка тренера", detail: note.text, onRemove: () => removeNote(note.id) })),
+    ...completions.map((item): TimelineEvent => ({ id: `wc-${item.id}`, date: item.completedDate, kind: "completion", label: `Тренировка: ${item.dayWorkoutTitle}`, detail: `${item.workoutTitle} • ${item.exerciseCount} упражнений` })),
+    ...weights.map((record): TimelineEvent => ({ id: `bw-${record.id}`, date: record.recordedDate, kind: "weight", label: `Вес тела: ${record.weightKg} кг` })),
+    ...strengthRecords.map((record): TimelineEvent => ({ id: `sr-${record.id}`, date: record.recordedDate, kind: "strength", label: `${record.exerciseName}: ${record.maxWeight} кг`, detail: record.muscleGroup })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
   return (
     <div className="app-card rounded-2xl p-4">
-      <h3 className="text-xl font-bold">Заметки по клиенту</h3>
-      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Видны только тебе — клиент их не видит.</p>
-      <TextArea label="Новая заметка" value={text} onChange={setText} rows={2} />
-      <button type="button" disabled={!text.trim()} onClick={addNote} className="btn btn-secondary btn-md glass mt-2">Добавить заметку</button>
+      <h3 className="text-xl font-bold">Лента активности</h3>
+      <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-3)" }}>Заметки, тренировки, вес и силовые рекорды клиента на одной шкале. Заметки видны только тебе.</p>
+      <TextArea label="Новая заметка" value={noteText} onChange={setNoteText} rows={2} />
+      <button type="button" disabled={!noteText.trim()} onClick={addNote} className="btn btn-secondary btn-md glass mt-2">Добавить заметку</button>
       {status && <p className="text-sm mt-3" style={{ color: "#ff8a98" }}>{status}</p>}
-      <div className="space-y-3 mt-4">
+      <div className="space-y-3 mt-5">
         {loading && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Загружаем...</p>}
-        {!loading && !notes.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Заметок пока нет.</p>}
-        {notes.map((note) => (
-          <div key={note.id} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
-            <p className="text-sm" style={{ color: "var(--ink-2)" }}>{note.text}</p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-xs" style={{ color: "var(--ink-3)" }}>{new Date(note.createdAt).toLocaleString("ru-RU")}</span>
-              <button type="button" onClick={() => removeNote(note.id)} className="text-xs font-semibold shrink-0" style={{ color: "#ff8a98" }}>Удалить</button>
+        {!loading && !events.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Пока пусто — как только появятся заметки, тренировки или замеры, они окажутся здесь.</p>}
+        {events.map((event) => (
+          <div key={event.id} className="rounded-2xl p-3 flex gap-3" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }}>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full" style={{ background: "rgba(52,231,166,.14)", color: "var(--accent)" }}>{timelineIcon(event.kind)}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <b className="text-sm">{event.label}</b>
+                <span className="text-xs shrink-0" style={{ color: "var(--ink-3)" }}>{new Date(event.date + "T00:00:00").toLocaleDateString("ru-RU")}</span>
+              </div>
+              {event.detail && <p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{event.detail}</p>}
+              {event.onRemove && <button type="button" onClick={event.onRemove} className="text-xs font-semibold mt-2" style={{ color: "#ff8a98" }}>Удалить</button>}
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+};
+
+const CoachBodyWeightView = ({ clientId }: { clientId: string }) => {
+  const [records, setRecords] = useState<BodyWeightRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    fetchCoachClientBodyWeightRecords(clientId)
+      .then((next) => { if (!cancelled) setRecords(next); })
+      .catch(() => { if (!cancelled) setRecords([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  return (
+    <div className="app-card rounded-3xl p-4">
+      <h3 className="text-xl font-bold flex items-center gap-2"><Scale size={18} /> Вес тела клиента</h3>
+      {loading ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Загружаем...</p> : !records.length ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Клиент пока не добавлял записи веса.</p> : (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          {records.slice().reverse().map((record) => <div key={record.id} className="rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,.04)" }}><b>{record.weightKg} кг</b><p className="text-sm" style={{ color: "var(--ink-2)" }}>{new Date(record.recordedDate).toLocaleDateString("ru-RU")}</p></div>)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CoachProgressPhotos = ({ clientId }: { clientId: string }) => {
+  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    fetchCoachClientProgressPhotos(clientId)
+      .then((next) => { if (!cancelled) setPhotos(next); })
+      .catch(() => { if (!cancelled) setPhotos([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  return (
+    <div className="app-card rounded-3xl p-4">
+      <h3 className="text-xl font-bold flex items-center gap-2"><ImageIcon size={18} /> Прогресс-фото клиента</h3>
+      {loading ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Загружаем...</p> : !photos.length ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Клиент пока не добавлял фото.</p> : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+          {photos.map((photo) => (
+            <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="block">
+              <img src={photo.url} alt={photo.takenDate} className="w-full aspect-square object-cover rounded-2xl" />
+              <p className="text-xs mt-1 text-center" style={{ color: "var(--ink-3)" }}>{new Date(photo.takenDate + "T00:00:00").toLocaleDateString("ru-RU")}</p>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -1050,6 +1180,36 @@ const CoachStrengthChart = ({ records }: { records: StrengthRecord[] }) => {
 
 const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
+const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onInsert: (label: string) => void; onAdd: (label: string) => void; onRemove: (id: string) => void }) => {
+  const [selected, setSelected] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+
+  return (
+    <div className="rounded-2xl p-3 mt-3 mb-1" style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--line)" }}>
+      <div className="flex flex-wrap gap-2 items-center">
+        <select value={selected} onChange={(event) => setSelected(event.target.value)} className="field-input mt-0 flex-1 min-w-[180px]">
+          <option value="">Из библиотеки упражнений...</option>
+          {library.map((item) => <option key={item.id} value={item.label}>{item.label}</option>)}
+        </select>
+        <button type="button" disabled={!selected} onClick={() => { onInsert(selected); setSelected(""); }} className="btn btn-secondary btn-sm glass">Вставить</button>
+        <button type="button" onClick={() => setManageOpen((value) => !value)} className="btn btn-ghost btn-sm">{manageOpen ? "Скрыть библиотеку" : "Управлять библиотекой"}</button>
+      </div>
+      {manageOpen && (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Новое упражнение для библиотеки, например: Жим лёжа — 4×8" className="field-input mt-0" />
+            <button type="button" disabled={!newLabel.trim()} onClick={() => { onAdd(newLabel.trim()); setNewLabel(""); }} className="btn btn-secondary btn-sm glass">Сохранить</button>
+          </div>
+          {Boolean(library.length) && <div className="flex flex-wrap gap-2">
+            {library.map((item) => <span key={item.id} className="badge badge-neutral flex items-center gap-2">{item.label}<button type="button" onClick={() => onRemove(item.id)} aria-label={`Удалить ${item.label} из библиотеки`} style={{ color: "#ff8a98" }}>×</button></span>)}
+          </div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: (exercises: string[]) => void }) => {
   const updateExercise = (index: number, value: string) => onChange(exercises.map((exercise, i) => i === index ? value : exercise));
   const addExercise = () => onChange([...exercises, ""]);
@@ -1074,14 +1234,40 @@ const ExerciseList = ({ exercises, onChange }: { exercises: string[]; onChange: 
   );
 };
 
-const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; allWorkouts: Workout[]; onSwitchWorkout: (id: string) => void; clients: Client[]; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
+const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, coachId, onChange, onDelete, onDuplicate, onBulkAssign }: { workout: Workout; allWorkouts: Workout[]; onSwitchWorkout: (id: string) => void; clients: Client[]; coachId: string; onChange: (patch: Partial<Workout>) => Promise<void> | void; onDelete: () => void; onDuplicate: () => void; onBulkAssign: (workout: Workout, clientIds: string[], startDate: string) => Promise<void> | void }) => {
   const [draft, setDraft] = useState<Workout>({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() });
   const [status, setStatus] = useState("");
   const [bulkClientIds, setBulkClientIds] = useState<string[]>([]);
   const [bulkStartDate, setBulkStartDate] = useState(toISODate(new Date()));
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [library, setLibrary] = useState<ExerciseLibraryItem[]>([]);
 
   useEffect(() => setDraft({ ...workout, weeklyTemplate: workout.weeklyTemplate || createEmptyWeeklyTemplate() }), [workout.id]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !coachId) return;
+    fetchExerciseLibrary(coachId).then(setLibrary).catch(() => {});
+  }, [coachId]);
+
+  const addLibraryItem = async (label: string) => {
+    if (!isSupabaseConfigured || !coachId) return;
+    try {
+      const item = await createExerciseLibraryItem(coachId, label);
+      setLibrary((current) => [...current, item]);
+    } catch {
+      // Библиотека — вспомогательный ускоритель ввода, а не критичные данные:
+      // если сохранить не удалось, план всё равно можно собрать вручную.
+    }
+  };
+
+  const removeLibraryItem = async (id: string) => {
+    try {
+      await deleteExerciseLibraryItem(id);
+      setLibrary((current) => current.filter((item) => item.id !== id));
+    } catch {
+      // См. комментарий в addLibraryItem.
+    }
+  };
 
   const usedDays = Object.keys(draft.weeklyTemplate || {});
   const availableDays = weekDays.filter((day) => !usedDays.includes(day));
@@ -1199,6 +1385,7 @@ const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, onChang
                   <Field label="Название тренировки" value={dayWorkout.title} onChange={(title) => updateDay(day, { title })} />
                   <Field label="Фокус" value={dayWorkout.focus} onChange={(focus) => updateDay(day, { focus })} />
                 </div>
+                <ExerciseLibraryPicker library={library} onInsert={(label) => updateDay(day, { exercises: [...(dayWorkout.exercises || []), label] })} onAdd={addLibraryItem} onRemove={removeLibraryItem} />
                 <ExerciseList exercises={dayWorkout.exercises || []} onChange={(exercises) => updateDay(day, { exercises })} />
                 <TextArea label="Заметки к этому дню" value={dayWorkout.notes} onChange={(notes) => updateDay(day, { notes })} />
               </div>

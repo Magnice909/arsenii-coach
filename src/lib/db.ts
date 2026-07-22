@@ -904,8 +904,10 @@ export const fetchCoachClientCompletionHistory = async (clientId: string): Promi
 };
 
 // ============================================================
-// Библиотека упражнений тренера — сохранённые строки для быстрой вставки
-// в план вместо повторного набора текста каждый раз.
+// Библиотека упражнений тренера — название + группа мышц, сохраняются
+// один раз и переиспользуются в любом плане. Подходы/повторы в шаблоне
+// не хранятся — их тренер вписывает вручную при вставке в конкретный
+// план, так как они у одного упражнения отличаются от клиента к клиенту.
 // ============================================================
 
 export type ExerciseLibraryItem = { id: string; label: string; muscleGroup?: string };
@@ -916,8 +918,8 @@ export const fetchExerciseLibrary = async (coachId: string): Promise<ExerciseLib
   return (data || []).map((row: any) => ({ id: row.id, label: row.label, muscleGroup: row.muscle_group || undefined }));
 };
 
-export const createExerciseLibraryItem = async (coachId: string, label: string): Promise<ExerciseLibraryItem> => {
-  const { data, error } = await supabase.from("exercise_library").insert({ coach_id: coachId, label }).select("*").single();
+export const createExerciseLibraryItem = async (coachId: string, label: string, muscleGroup?: string): Promise<ExerciseLibraryItem> => {
+  const { data, error } = await supabase.from("exercise_library").insert({ coach_id: coachId, label, muscle_group: muscleGroup || null }).select("*").single();
   if (error) throw error;
   return { id: data.id, label: data.label, muscleGroup: data.muscle_group || undefined };
 };
@@ -927,48 +929,4 @@ export const deleteExerciseLibraryItem = async (id: string) => {
   if (error) throw error;
 };
 
-// ============================================================
-// Прогресс-фото клиента — приватные файлы в bucket'е progress-photos,
-// доступ по временным подписанным ссылкам (bucket не публичный).
-// ============================================================
-
-export type ProgressPhoto = { id: string; clientId: string; storagePath: string; takenDate: string; url?: string };
-
-const signProgressPhotoUrls = async (rows: any[]): Promise<ProgressPhoto[]> => {
-  if (!rows.length) return [];
-  const paths = rows.map((row) => row.storage_path);
-  const { data, error } = await supabase.storage.from("progress-photos").createSignedUrls(paths, 3600);
-  if (error) throw error;
-  const urlByPath = new Map((data || []).map((item: any) => [item.path, item.signedUrl]));
-  return rows.map((row) => ({ id: row.id, clientId: row.client_id, storagePath: row.storage_path, takenDate: row.taken_date, url: urlByPath.get(row.storage_path) }));
-};
-
-export const uploadProgressPhoto = async (clientId: string, userId: string, file: File, takenDate: string): Promise<ProgressPhoto> => {
-  const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const path = `${clientId}/${Date.now()}.${extension}`;
-  const { error: uploadError } = await supabase.storage.from("progress-photos").upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
-  if (uploadError) throw uploadError;
-  const { data, error } = await supabase.from("progress_photos").insert({ client_id: clientId, user_id: userId, storage_path: path, taken_date: takenDate }).select("*").single();
-  if (error) throw error;
-  const [signed] = await signProgressPhotoUrls([data]);
-  return signed;
-};
-
-export const fetchClientProgressPhotos = async (clientId: string, userId: string): Promise<ProgressPhoto[]> => {
-  const { data, error } = await supabase.from("progress_photos").select("*").eq("client_id", clientId).eq("user_id", userId).order("taken_date", { ascending: false });
-  if (error) throw error;
-  return signProgressPhotoUrls(data || []);
-};
-
-export const fetchCoachClientProgressPhotos = async (clientId: string): Promise<ProgressPhoto[]> => {
-  const { data, error } = await supabase.from("progress_photos").select("*").eq("client_id", clientId).order("taken_date", { ascending: false });
-  if (error) throw error;
-  return signProgressPhotoUrls(data || []);
-};
-
-export const deleteProgressPhoto = async (photoId: string, storagePath: string) => {
-  await supabase.storage.from("progress-photos").remove([storagePath]);
-  const { error } = await supabase.from("progress_photos").delete().eq("id", photoId);
-  if (error) throw error;
-};
 

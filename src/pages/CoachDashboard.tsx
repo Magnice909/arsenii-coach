@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, Copy, Download, Dumbbell, Image as ImageIcon, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Scale, Search, Send, Settings, StickyNote, Tag, Trash2, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, Copy, Download, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Scale, Search, Send, Settings, StickyNote, Tag, Trash2, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket, ClientNote, fetchClientNotes, createClientNote, deleteClientNote, CompletionHistoryItem, fetchCoachClientCompletionHistory, BodyWeightRecord, fetchCoachClientBodyWeightRecords, ExerciseLibraryItem, fetchExerciseLibrary, createExerciseLibraryItem, deleteExerciseLibraryItem, ProgressPhoto, fetchCoachClientProgressPhotos } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket, ClientNote, fetchClientNotes, createClientNote, deleteClientNote, CompletionHistoryItem, fetchCoachClientCompletionHistory, BodyWeightRecord, fetchCoachClientBodyWeightRecords, ExerciseLibraryItem, fetchExerciseLibrary, createExerciseLibraryItem, deleteExerciseLibraryItem } from "../lib/db";
 import CalendarView from "../components/CalendarView";
 import HoloCard from "../components/HoloCard";
 import ProgressRing from "../components/ProgressRing";
-import { AlertBanner, AlertLine } from "../components/AlertBanner";
+import { AlertBanner, AlertLine, alertColors } from "../components/AlertBanner";
 import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
 type Application = {
@@ -529,7 +529,7 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><button type="button" onClick={exportClientsCsv} className="btn btn-secondary btn-sm glass mt-3"><Download size={14} /> Экспорт в CSV</button>{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="client-list"><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><button type="button" onClick={exportClientsCsv} className="btn btn-secondary btn-sm glass mt-3"><Download size={14} /> Экспорт в CSV</button>{Boolean(clientTags.length) && <div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setClientTagFilter("")} className={clientTagFilter === "" ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button>{clientTags.map((tag) => <button key={tag} type="button" onClick={() => setClientTagFilter(tag)} className={clientTagFilter === tag ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>{tag}</button>)}</div>}<div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => { setSelectedClientId(c.id); document.getElementById("client-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(52,231,166,.45)" : needsPaymentAttention(c) ? alertColors.warning.border : "var(--line)", background: needsPaymentAttention(c) ? alertColors.warning.bg : undefined }}><div className="flex flex-wrap items-center gap-2"><b>{c.name}</b>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}{needsPaymentAttention(c) && <span className="badge" style={{ background: alertColors.warning.bg, color: alertColors.warning.text, border: `1px solid ${alertColors.warning.border}` }}>Оплата</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="client-editor"><ClientEditor key={selectedClient.id} client={selectedClient} allClients={clients} onSwitchClient={setSelectedClientId} workouts={workouts} strengthRecords={selectedClientStrength} coachId={user?.id || ""} onChange={updateClient} onDelete={deleteClient} /></div></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
         {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5"><div id="workout-list"><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={() => setWorkoutTemplateFilter(false)} className={!workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Все</button><button type="button" onClick={() => setWorkoutTemplateFilter(true)} className={workoutTemplateFilter ? "badge badge-accent" : "btn btn-secondary btn-sm glass"}>Только шаблоны</button></div><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => { setSelectedWorkoutId(w.id); document.getElementById("workout-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(52,231,166,.45)" : "var(--line)" }}><div className="flex flex-wrap items-center gap-2"><b>{w.title}</b>{w.isTemplate && <span className="badge badge-accent">Шаблон</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><div id="workout-editor"><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} allWorkouts={workouts} onSwitchWorkout={setSelectedWorkoutId} clients={clients} coachId={user?.id || ""} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></div></Panel>}
@@ -588,7 +588,7 @@ const Metric = ({ title, value, ring, onClick, hint }: { title: string; value?: 
   return <HoloCard className="stat-tile glass rounded-3xl p-5">{content}</HoloCard>;
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(52,231,166,.3)] hover:bg-white/[.04]"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-lg">{c.name}</h3>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <AlertLine level="warning">План закончился или заканчивается — нужно продлить</AlertLine>}{needsActivityAttention(c) && <AlertLine level="danger">{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</AlertLine>}{needsPaymentAttention(c) && <AlertLine level="warning">Оплата {daysUntilIso(c.nextPaymentDate!) < 0 ? "просрочена" : daysUntilIso(c.nextPaymentDate!) === 0 ? "сегодня" : `через ${daysUntilIso(c.nextPaymentDate!)} дн.`}</AlertLine>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(52,231,166,.3)] hover:bg-white/[.04]" style={needsPaymentAttention(c) ? { borderColor: alertColors.warning.border, background: alertColors.warning.bg } : undefined}><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-lg">{c.name}</h3>{c.tag && <span className="badge badge-accent"><Tag size={11} /> {c.tag}</span>}{needsPaymentAttention(c) && <span className="badge" style={{ background: alertColors.warning.bg, color: alertColors.warning.text, border: `1px solid ${alertColors.warning.border}` }}>Оплата</span>}</div><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <AlertLine level="warning">План закончился или заканчивается — нужно продлить</AlertLine>}{needsActivityAttention(c) && <AlertLine level="danger">{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</AlertLine>}{needsPaymentAttention(c) && <AlertLine level="warning">Оплата {daysUntilIso(c.nextPaymentDate!) < 0 ? "просрочена" : daysUntilIso(c.nextPaymentDate!) === 0 ? "сегодня" : `через ${daysUntilIso(c.nextPaymentDate!)} дн.`}</AlertLine>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
 const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) => (
   <label className="relative block">
     <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-3)" }} />
@@ -966,7 +966,6 @@ const ClientEditor = ({ client, allClients, onSwitchClient, workouts, strengthRe
       {editorTab === "progress" && <>
         <CoachStrengthProgress records={strengthRecords} />
         <CoachBodyWeightView clientId={client.id} />
-        <CoachProgressPhotos clientId={client.id} />
       </>}
     </div>
   );
@@ -1094,38 +1093,6 @@ const CoachBodyWeightView = ({ clientId }: { clientId: string }) => {
   );
 };
 
-const CoachProgressPhotos = ({ clientId }: { clientId: string }) => {
-  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    if (!isSupabaseConfigured) { setLoading(false); return; }
-    fetchCoachClientProgressPhotos(clientId)
-      .then((next) => { if (!cancelled) setPhotos(next); })
-      .catch(() => { if (!cancelled) setPhotos([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [clientId]);
-
-  return (
-    <div className="app-card rounded-3xl p-4">
-      <h3 className="text-xl font-bold flex items-center gap-2"><ImageIcon size={18} /> Прогресс-фото клиента</h3>
-      {loading ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Загружаем...</p> : !photos.length ? <p className="text-sm mt-3" style={{ color: "var(--ink-3)" }}>Клиент пока не добавлял фото.</p> : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          {photos.map((photo) => (
-            <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="block">
-              <img src={photo.url} alt={photo.takenDate} className="w-full aspect-square object-cover rounded-2xl" />
-              <p className="text-xs mt-1 text-center" style={{ color: "var(--ink-3)" }}>{new Date(photo.takenDate + "T00:00:00").toLocaleDateString("ru-RU")}</p>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const CoachStrengthProgress = ({ records }: { records: StrengthRecord[] }) => {
   const [groupFilter, setGroupFilter] = useState("all");
   const [exerciseFilter, setExerciseFilter] = useState("all");
@@ -1180,29 +1147,56 @@ const CoachStrengthChart = ({ records }: { records: StrengthRecord[] }) => {
 
 const weekDays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
-const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onInsert: (label: string) => void; onAdd: (label: string) => void; onRemove: (id: string) => void }) => {
-  const [selected, setSelected] = useState("");
+const exerciseMuscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Руки", "Кор", "Другое"];
+
+// Шаблон в библиотеке хранит только название и группу мышц — подходы и
+// повторы у одного и того же упражнения отличаются от клиента к клиенту,
+// поэтому их тренер вписывает вручную при каждой вставке, а не хранит
+// заранее зафиксированными в шаблоне.
+const ExerciseLibraryPicker = ({ library, onInsert, onAdd, onRemove }: { library: ExerciseLibraryItem[]; onInsert: (text: string) => void; onAdd: (label: string, muscleGroup: string) => void; onRemove: (id: string) => void }) => {
+  const [selectedId, setSelectedId] = useState("");
+  const [setsReps, setSetsReps] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [newMuscleGroup, setNewMuscleGroup] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
+
+  const insert = () => {
+    const item = library.find((candidate) => candidate.id === selectedId);
+    if (!item) return;
+    onInsert(setsReps.trim() ? `${item.label} — ${setsReps.trim()}` : item.label);
+    setSelectedId("");
+    setSetsReps("");
+  };
 
   return (
     <div className="rounded-2xl p-3 mt-3 mb-1" style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--line)" }}>
-      <div className="flex flex-wrap gap-2 items-center">
-        <select value={selected} onChange={(event) => setSelected(event.target.value)} className="field-input mt-0 flex-1 min-w-[180px]">
-          <option value="">Из библиотеки упражнений...</option>
-          {library.map((item) => <option key={item.id} value={item.label}>{item.label}</option>)}
-        </select>
-        <button type="button" disabled={!selected} onClick={() => { onInsert(selected); setSelected(""); }} className="btn btn-secondary btn-sm glass">Вставить</button>
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="text-xs flex-1 min-w-[180px]" style={{ color: "var(--ink-3)" }}>
+          Упражнение из библиотеки
+          <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)} className="field-input mt-1">
+            <option value="">Выбрать...</option>
+            {library.map((item) => <option key={item.id} value={item.id}>{item.label}{item.muscleGroup ? ` (${item.muscleGroup})` : ""}</option>)}
+          </select>
+        </label>
+        <label className="text-xs" style={{ color: "var(--ink-3)" }}>
+          Подходы×повторы
+          <input value={setsReps} onChange={(event) => setSetsReps(event.target.value)} placeholder="4×8" className="field-input mt-1 w-28" />
+        </label>
+        <button type="button" disabled={!selectedId} onClick={insert} className="btn btn-secondary btn-sm glass">Вставить</button>
         <button type="button" onClick={() => setManageOpen((value) => !value)} className="btn btn-ghost btn-sm">{manageOpen ? "Скрыть библиотеку" : "Управлять библиотекой"}</button>
       </div>
       {manageOpen && (
         <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Новое упражнение для библиотеки, например: Жим лёжа — 4×8" className="field-input mt-0" />
-            <button type="button" disabled={!newLabel.trim()} onClick={() => { onAdd(newLabel.trim()); setNewLabel(""); }} className="btn btn-secondary btn-sm glass">Сохранить</button>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_auto] gap-2">
+            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Название упражнения, например: Жим лёжа" className="field-input mt-0" />
+            <select value={newMuscleGroup} onChange={(event) => setNewMuscleGroup(event.target.value)} className="field-input mt-0">
+              <option value="">Группа мышц</option>
+              {exerciseMuscleGroups.map((group) => <option key={group} value={group}>{group}</option>)}
+            </select>
+            <button type="button" disabled={!newLabel.trim()} onClick={() => { onAdd(newLabel.trim(), newMuscleGroup); setNewLabel(""); setNewMuscleGroup(""); }} className="btn btn-secondary btn-sm glass">Сохранить</button>
           </div>
           {Boolean(library.length) && <div className="flex flex-wrap gap-2">
-            {library.map((item) => <span key={item.id} className="badge badge-neutral flex items-center gap-2">{item.label}<button type="button" onClick={() => onRemove(item.id)} aria-label={`Удалить ${item.label} из библиотеки`} style={{ color: "#ff8a98" }}>×</button></span>)}
+            {library.map((item) => <span key={item.id} className="badge badge-neutral flex items-center gap-2">{item.label}{item.muscleGroup ? ` · ${item.muscleGroup}` : ""}<button type="button" onClick={() => onRemove(item.id)} aria-label={`Удалить ${item.label} из библиотеки`} style={{ color: "#ff8a98" }}>×</button></span>)}
           </div>}
         </div>
       )}
@@ -1249,10 +1243,10 @@ const WorkoutEditor = ({ workout, allWorkouts, onSwitchWorkout, clients, coachId
     fetchExerciseLibrary(coachId).then(setLibrary).catch(() => {});
   }, [coachId]);
 
-  const addLibraryItem = async (label: string) => {
+  const addLibraryItem = async (label: string, muscleGroup: string) => {
     if (!isSupabaseConfigured || !coachId) return;
     try {
-      const item = await createExerciseLibraryItem(coachId, label);
+      const item = await createExerciseLibraryItem(coachId, label, muscleGroup || undefined);
       setLibrary((current) => [...current, item]);
     } catch {
       // Библиотека — вспомогательный ускоритель ввода, а не критичные данные:

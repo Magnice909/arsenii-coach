@@ -116,12 +116,24 @@ export const fetchCoachData = async (coachId: string) => {
   const clientIds = (clientRows || []).map((row) => row.id);
   const { start, end } = getCurrentWeekRange();
   const todayIso = toISODate(new Date());
-  const [{ data: completionRows }, activePeriods] = await Promise.all([
+  const [{ data: completionRows }, activePeriods, { data: recentCompletionRows }] = await Promise.all([
     clientIds.length
       ? supabase.from("workout_completions").select("client_id, day_of_week, workout_id").in("client_id", clientIds).gte("completed_date", start).lte("completed_date", end)
       : Promise.resolve({ data: [] as any[] }),
     fetchPlanPeriodsInRange(clientIds, todayIso, todayIso),
+    // Последняя отметка тренировки по каждому клиенту — не ограничена текущей
+    // неделей (в отличие от completionRows выше, который нужен только для
+    // расчёта прогресса за неделю). Нужна тренеру, чтобы видеть, кто давно
+    // не отмечался, а не только у кого скоро кончится план.
+    clientIds.length
+      ? supabase.from("workout_completions").select("client_id, completed_date").in("client_id", clientIds).order("completed_date", { ascending: false }).limit(500)
+      : Promise.resolve({ data: [] as any[] }),
   ]);
+
+  const lastActivityByClient: Record<string, string> = {};
+  for (const row of recentCompletionRows || []) {
+    if (!lastActivityByClient[row.client_id]) lastActivityByClient[row.client_id] = row.completed_date;
+  }
 
   // Активный 7-дневный план (plan_periods) — новый источник истины о том, что
   // назначено клиенту прямо сейчас. Раньше прогресс и «текущий план» на этой
@@ -146,6 +158,7 @@ export const fetchCoachData = async (coachId: string) => {
     const weeklyPlan = activeWorkout ? buildWeeklyPlanFromWorkout(activeWorkout) : dueNextWorkout ? buildWeeklyPlanFromWorkout(dueNextWorkout) : (planByClient[row.id] || {});
     const client = dbClientToClient(row, workouts, weeklyPlan);
     client.planEndDate = activeEndDateByClient[row.id];
+    client.lastActivityDate = lastActivityByClient[row.id];
     if (activeWorkout) {
       client.assignedWorkoutId = activeWorkout.id;
       client.plan = activeWorkout.title;
@@ -383,6 +396,13 @@ export const fetchCoachNotifications = async (): Promise<Message[]> => {
   return (data || []).map((row: any) => ({ id: row.id || makeId(), from: row.title || "Уведомление", text: row.body || "", time: row.created_at ? new Date(row.created_at).toLocaleString("ru-RU") : "", url: row.url || "/#/coach" }));
 };
 
+// Запрос не фильтрует по получателю явно — это делает RLS-политика
+// "получатель читает только свои уведомления" ("recipient can read own
+// notifications"), поэтому одна и та же функция подходит и тренеру
+// (см. fetchCoachNotifications выше), и клиенту — для входящих сообщений
+// от тренера во вкладке «Связь».
+export const fetchMyNotifications = fetchCoachNotifications;
+
 export const createNotification = async (recipientId: string, title: string, body: string, url = "/") => {
   const { data: sessionData } = await supabase.auth.getSession();
   const senderId = sessionData.session?.user.id;
@@ -550,6 +570,102 @@ export const fetchCoachClientStrengthRecords = async (clientId: string): Promise
 
   if (error) throw error;
   return (data || []).map(dbStrengthRecordToRecord);
+};
+
+// ============================================================
+// Вес тела (body_weight_records) — отдельно от силовых показателей
+// ============================================================
+
+export type BodyWeightRecord = {
+  id: string;
+  clientId: string;
+  userId: string;
+  weightKg: number;
+  recordedDate: string;
+  createdAt?: string;
+};
+
+const dbBodyWeightRecordToRecord = (row: any): BodyWeightRecord => ({
+  id: row.id,
+  clientId: row.client_id,
+  userId: row.user_id,
+  weightKg: Number(row.weight_kg || 0),
+  recordedDate: row.recorded_date,
+  createdAt: row.created_at,
+});
+
+export const fetchClientBodyWeightRecords = async (clientId: string, userId: string): Promise<BodyWeightRecord[]> => {
+  const { data, error } = await supabase
+    .from("body_weight_records")
+    .select("*")
+    .eq("client_id", clientId)
+    .eq("user_id", userId)
+    .order("recorded_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(dbBodyWeightRecordToRecord);
+};
+
+export const createBodyWeightRecord = async (record: { clientId: string; userId: string; weightKg: number; recordedDate: string }): Promise<BodyWeightRecord> => {
+  const { data, error } = await supabase
+    .from("body_weight_records")
+    .insert({ client_id: record.clientId, user_id: record.userId, weight_kg: record.weightKg, recorded_date: record.recordedDate })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return dbBodyWeightRecordToRecord(data);
+};
+
+export const fetchCoachClientBodyWeightRecords = async (clientId: string): Promise<BodyWeightRecord[]> => {
+  const { data, error } = await supabase
+    .from("body_weight_records")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("recorded_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(dbBodyWeightRecordToRecord);
+};
+
+// ============================================================
+// Аналитика тренера: выполнение тренировок по неделям
+// ============================================================
+
+export type WeeklyActivityBucket = { weekStart: string; count: number };
+
+/** Считает количество отметок «выполнено» по всем клиентам тренера за
+ *  последние `weeks` недель (включая текущую) — для графика на «Обзоре». */
+export const fetchWeeklyCompletionCounts = async (clientIds: string[], weeks = 8): Promise<WeeklyActivityBucket[]> => {
+  const { start: currentWeekStart } = getCurrentWeekRange();
+  const rangeStart = addDaysToISO(currentWeekStart, -(weeks - 1) * 7);
+
+  const buckets: WeeklyActivityBucket[] = Array.from({ length: weeks }, (_, index) => ({
+    weekStart: addDaysToISO(rangeStart, index * 7),
+    count: 0,
+  }));
+  if (!clientIds.length) return buckets;
+
+  const { data, error } = await supabase
+    .from("workout_completions")
+    .select("completed_date")
+    .in("client_id", clientIds)
+    .gte("completed_date", rangeStart);
+  if (error) throw error;
+
+  const bucketStartTimes = buckets.map((bucket) => new Date(bucket.weekStart + "T00:00:00").getTime());
+  for (const row of data || []) {
+    const completedTime = new Date(row.completed_date + "T00:00:00").getTime();
+    for (let index = bucketStartTimes.length - 1; index >= 0; index -= 1) {
+      if (completedTime >= bucketStartTimes[index]) {
+        buckets[index].count += 1;
+        break;
+      }
+    }
+  }
+  return buckets;
 };
 
 // ============================================================

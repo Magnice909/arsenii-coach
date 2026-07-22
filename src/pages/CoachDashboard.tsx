@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
+import { Bell, CalendarDays, Check, Copy, Dumbbell, Inbox, LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Send, Settings, Trash2, Users, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendPushToUsers } from "../lib/push";
 import { createClientAccount, deleteClientAccount } from "../lib/admin";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import { Client, getClients, getMessages, getSiteSettings, getUser, getWorkouts, logout, makeId, Message, resetSiteSettings, setClients, setMessages, setSiteSettings, setWorkouts, SiteSettings, Workout } from "../lib/storage";
-import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO } from "../lib/db";
+import { StrengthRecord, createClientRecord, createWorkoutRecord, deleteClientRecord, createEmptyWeeklyTemplate, deleteWorkoutRecord, fetchCoachClientStrengthRecords, fetchCoachData, fetchCoachNotifications, fetchSiteSettingsDb, markNotificationRead, replaceWeeklyPlanRecord, saveSiteSettingsDb, updateClientRecord, updateWorkoutRecord, createClientRecordFromClient, uploadSitePhoto, PlanPeriod, fetchCurrentPlanPeriod, createPlanPeriod, extendClientPlan, addDaysToISO, createNotification, fetchWeeklyCompletionCounts, WeeklyActivityBucket } from "../lib/db";
 import CalendarView from "../components/CalendarView";
 import { buildCalendarEntries, CalendarWorkoutEntry, toISODate } from "../lib/calendar";
 
@@ -39,6 +39,12 @@ type NavItem = { id: string; label: string; icon: LucideIcon };
 // на день, чтобы показать предупреждение на «Обзоре» и в карточке клиента.
 const daysUntilIso = (iso: string) => Math.round((new Date(iso + "T00:00:00").getTime() - new Date(toISODate(new Date()) + "T00:00:00").getTime()) / 86400000);
 const needsPlanAttention = (client: Client) => client.status === "Активен" && (!client.planEndDate || daysUntilIso(client.planEndDate) <= 1);
+// Клиент, который давно не отмечал тренировки, легко теряется среди тех, у
+// кого просто заканчивается план — это разные проблемы и разные действия
+// тренера, поэтому считаем отдельно.
+const INACTIVITY_DAYS_THRESHOLD = 7;
+const daysSinceIso = (iso: string) => Math.round((new Date(toISODate(new Date()) + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000);
+const needsActivityAttention = (client: Client) => client.status === "Активен" && (!client.lastActivityDate || daysSinceIso(client.lastActivityDate) >= INACTIVITY_DAYS_THRESHOLD);
 
 const coachNavItems: NavItem[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -71,9 +77,26 @@ const CoachDashboard = () => {
   const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [clientSearch, setClientSearch] = useState("");
+  const [workoutSearch, setWorkoutSearch] = useState("");
+  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityBucket[]>([]);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastClientIds, setBroadcastClientIds] = useState<string[]>([]);
+  const [broadcastStatus, setBroadcastStatus] = useState("");
+  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0];
   const selectedWorkout = workouts.find((w) => w.id === selectedWorkoutId) || workouts[0];
   const average = useMemo(() => clients.length ? Math.round(clients.reduce((sum, c) => sum + c.progress, 0) / clients.length) : 0, [clients]);
+  const filteredClients = useMemo(() => {
+    const query = clientSearch.trim().toLowerCase();
+    if (!query) return clients;
+    return clients.filter((c) => c.name.toLowerCase().includes(query) || c.telegram.toLowerCase().includes(query));
+  }, [clients, clientSearch]);
+  const filteredWorkouts = useMemo(() => {
+    const query = workoutSearch.trim().toLowerCase();
+    if (!query) return workouts;
+    return workouts.filter((w) => w.title.toLowerCase().includes(query));
+  }, [workouts, workoutSearch]);
 
   const loadAllData = async () => {
     if (!isSupabaseConfigured || !user?.id) return;
@@ -143,6 +166,18 @@ const CoachDashboard = () => {
     };
     if (tab === "clients") loadStrength();
   }, [tab, selectedClientId]);
+
+  useEffect(() => {
+    const loadWeeklyActivity = async () => {
+      if (!isSupabaseConfigured || !clients.length) { setWeeklyActivity([]); return; }
+      try {
+        setWeeklyActivity(await fetchWeeklyCompletionCounts(clients.map((c) => c.id)));
+      } catch {
+        setWeeklyActivity([]);
+      }
+    };
+    if (tab === "overview") loadWeeklyActivity();
+  }, [tab, clients]);
 
   const loadCalendarMonth = async (anchor: Date) => {
     if (!isSupabaseConfigured || !clients.length) { setCalendarEntries(new Map()); return; }
@@ -360,6 +395,26 @@ const CoachDashboard = () => {
     }
   };
 
+  const toggleBroadcastClient = (clientId: string) => setBroadcastClientIds((current) => current.includes(clientId) ? current.filter((id) => id !== clientId) : [...current, clientId]);
+
+  const sendBroadcastMessage = async () => {
+    if (!broadcastText.trim() || !broadcastClientIds.length || !isSupabaseConfigured) return;
+    setIsSendingBroadcast(true);
+    setBroadcastStatus("");
+    try {
+      const recipients = clients.filter((c) => broadcastClientIds.includes(c.id) && c.userId);
+      await Promise.all(recipients.map((client) => createNotification(client.userId!, "Сообщение от тренера", broadcastText.trim(), "/#/client")));
+      await sendPushToUsers(recipients.map((client) => client.userId || "").filter(Boolean), "Сообщение от тренера", broadcastText.trim(), "/#/client");
+      setBroadcastStatus(`Отправлено ${recipients.length} из ${broadcastClientIds.length} выбранных (без аккаунта в приложении сообщение не дойдёт).`);
+      setBroadcastText("");
+      setBroadcastClientIds([]);
+    } catch (error) {
+      setBroadcastStatus(getErrorMessage(error, "Не удалось отправить сообщение"));
+    } finally {
+      setIsSendingBroadcast(false);
+    }
+  };
+
   const exit = async () => { await logout(); window.location.hash = "/"; };
 
   return (
@@ -411,6 +466,8 @@ const CoachDashboard = () => {
         {tab === "overview" && <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric title="Клиентов" value={clients.length} /><Metric title="Планов" value={workouts.length} /><Metric title="Средний прогресс" value={`${average}%`} /><Metric title="Нужно ответить" value={messages.length} onClick={() => setTab("messages")} hint="Открыть" /></div>
           {clients.some(needsPlanAttention) && <div className="app-card rounded-2xl p-4" style={{ borderColor: "rgba(255,184,77,.35)", background: "rgba(255,184,77,.08)" }}><p className="font-semibold" style={{ color: "#ffb84d" }}>План не продлевается сам</p><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>У этих клиентов план уже закончился или заканчивается со дня на день: {clients.filter(needsPlanAttention).map((c) => c.name).join(", ")}.</p><button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button></div>}
+          {clients.some(needsActivityAttention) && <div className="app-card rounded-2xl p-4" style={{ borderColor: "rgba(255,138,152,.35)", background: "rgba(255,138,152,.08)" }}><p className="font-semibold" style={{ color: "#ff8a98" }}>Давно не отмечались</p><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{`${INACTIVITY_DAYS_THRESHOLD}+ дней без отметки тренировки: `}{clients.filter(needsActivityAttention).map((c) => c.name).join(", ")}.</p><button onClick={() => setTab("clients")} className="btn btn-secondary btn-sm glass mt-3">Открыть клиентов</button></div>}
+          <Panel title="Активность клиентов" subtitle="отметки тренировок по неделям, все клиенты вместе"><WeeklyActivityChart buckets={weeklyActivity} /></Panel>
           <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_.85fr] gap-5"><Panel title="Клиенты" subtitle="статусы и назначенные планы"><ClientList clients={clients} workouts={workouts} onSelect={(id) => { setSelectedClientId(id); setTab("clients"); }} /></Panel><Panel title="Уведомления" subtitle="из кабинета клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /></Panel></div>
         </div>}
 
@@ -419,12 +476,12 @@ const CoachDashboard = () => {
         {tab === "applications" && <Panel title="Заявки с главной страницы" subtitle="анкеты, которые заполнили посетители сайта"><div className="flex justify-end mb-4"><button onClick={loadApplications} className="btn btn-secondary btn-md glass">Обновить заявки</button></div>{applicationsStatus && <p className="mb-4" style={{ color: "var(--ink-2)" }}>{applicationsStatus}</p>}<ApplicationsList applications={applications} clients={clients} onCreateClient={createClientFromApplication} onDeleteApplication={deleteApplication} /></Panel>}
 
         {tab === "clients" && !selectedClient && <Panel title="Клиенты" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Клиентов пока нет. Нажмите «Добавить клиента», чтобы создать первого.</p></Panel>}
-        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}</div><ClientEditor key={selectedClient.id} client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
+        {tab === "clients" && selectedClient && <Panel title="Редактирование клиента" subtitle="можно менять всё: контакты, цель, питание, тренировку, прогресс"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div><SearchInput value={clientSearch} onChange={setClientSearch} placeholder="Поиск по имени или Telegram" /><div className="space-y-3 mt-3">{filteredClients.map(c => <button key={c.id} onClick={() => setSelectedClientId(c.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedClient.id === c.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{c.name}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{c.telegram} • {c.progress}%</p></button>)}{!filteredClients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><ClientEditor key={selectedClient.id} client={selectedClient} workouts={workouts} strengthRecords={selectedClientStrength} onChange={updateClient} onDelete={deleteClient} /></div></Panel>}
 
         {tab === "workouts" && !selectedWorkout && <Panel title="Планы тренировок" subtitle="список пока пуст"><p style={{ color: "var(--ink-2)" }}>Планов пока нет. Нажмите «Создать план», чтобы добавить первый план тренировок.</p></Panel>}
-        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div className="space-y-3">{workouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}</div><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
+        {tab === "workouts" && selectedWorkout && <Panel title="Конструктор планов тренировок" subtitle="создавай и редактируй программы, потом назначай клиентам"><div className="grid grid-cols-1 xl:grid-cols-[330px_1fr] gap-5"><div><SearchInput value={workoutSearch} onChange={setWorkoutSearch} placeholder="Поиск по названию плана" /><div className="space-y-3 mt-3">{filteredWorkouts.map(w => <button key={w.id} onClick={() => setSelectedWorkoutId(w.id)} className="w-full text-left app-card rounded-2xl p-4 transition hover:bg-white/[.04]" style={{ borderColor: selectedWorkout.id === w.id ? "rgba(104,225,253,.45)" : "var(--line)" }}><b>{w.title}</b><p className="text-sm mt-1" style={{ color: "var(--ink-3)" }}>{w.weeklyTemplate ? `${Object.keys(w.weeklyTemplate).length} трен. дней` : `${w.day} • ${w.exercises.length} упражнений`}</p></button>)}{!filteredWorkouts.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Ничего не найдено.</p>}</div></div><WorkoutEditor key={selectedWorkout.id} workout={selectedWorkout} clients={clients} onChange={updateWorkout} onDelete={deleteWorkout} onDuplicate={duplicateWorkout} onBulkAssign={assignWorkoutToClients} /></div></Panel>}
 
-        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
+        {tab === "messages" && <Panel title="Сообщения и Telegram" subtitle="уведомления и контакты клиентов"><MessageList messages={messages} onOpenClients={() => setTab("clients")} onMarkRead={markMessageRead} /><BroadcastComposer clients={clients} text={broadcastText} onTextChange={setBroadcastText} selectedIds={broadcastClientIds} onToggleClient={toggleBroadcastClient} onSend={sendBroadcastMessage} status={broadcastStatus} isSending={isSendingBroadcast} /><div className="mt-5 app-card rounded-2xl p-5"><h3 className="text-xl font-bold">Telegram интеграция</h3><p className="mt-2" style={{ color: "var(--ink-2)" }}>В продакшене сюда можно подключить Telegram Bot API, чтобы заявки и уведомления приходили в Telegram @president_h.</p></div></Panel>}
         {tab === "settings" && <Panel title="Редактирование главной страницы" subtitle="текст, кнопка и фото на лендинге"><div className="app-card rounded-2xl p-5 mb-5"><h3 className="text-xl font-bold">Push-уведомления тренера</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи на этом устройстве, чтобы получать уведомления о действиях клиентов. На iPhone сайт должен быть открыт как веб-приложение с экрана «Домой».</p><button onClick={enablePush} className="btn btn-primary btn-md mt-4">Включить уведомления тренеру</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div><SiteEditor settings={siteSettingsState} onChange={(next) => { updateSiteSettingsState(next); setSiteSettings(next); if (isSupabaseConfigured) saveSiteSettingsDb(next).catch((error) => setSyncStatus(getErrorMessage(error, "Не удалось сохранить главную"))); }} /></Panel>}
       </section>
     </main>
@@ -469,7 +526,46 @@ const Metric = ({ title, value, onClick, hint }: { title: string; value: string 
   return <div className="stat-tile glass rounded-3xl p-5">{content}</div>;
 };
 const Panel = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => <section className="relative z-10 glass rounded-[1.75rem] p-5 md:p-7"><div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-6"><h2 className="text-2xl md:text-[1.75rem] font-bold tracking-[-.02em]">{title}</h2><span className="text-sm" style={{ color: "var(--ink-3)" }}>{subtitle}</span></div>{children}</section>;
-const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ffb84d" }}>План закончился или заканчивается — нужно продлить</p>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const ClientList = ({ clients, workouts, onSelect }: { clients: Client[]; workouts: Workout[]; onSelect: (id: string) => void }) => <div className="space-y-3">{clients.map(c => <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left app-card rounded-2xl p-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 transition hover:border-[rgba(104,225,253,.3)] hover:bg-white/[.04]"><div><h3 className="font-bold text-lg">{c.name}</h3><p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>{workouts.find(w => w.id === c.assignedWorkoutId)?.title || c.plan} • {c.telegram}</p>{needsPlanAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ffb84d" }}>План закончился или заканчивается — нужно продлить</p>}{needsActivityAttention(c) && <p className="text-sm mt-1 font-semibold" style={{ color: "#ff8a98" }}>{c.lastActivityDate ? `Не отмечался с ${c.lastActivityDate}` : "Ни разу не отмечался"}</p>}</div><div className="text-left md:text-right"><span className={`badge ${c.status === "Пропуск" ? "badge-danger" : "badge-accent"}`}>{c.status}</span><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Прогресс {c.progress}%</p></div></button>)}</div>;
+const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) => (
+  <label className="relative block">
+    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-3)" }} />
+    <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="field-input mt-0 pl-10" style={{ fontSize: "16px" }} />
+  </label>
+);
+const WeeklyActivityChart = ({ buckets }: { buckets: WeeklyActivityBucket[] }) => {
+  if (!buckets.length) return <p style={{ color: "var(--ink-2)" }}>Пока нет данных — появятся, как только клиенты начнут отмечать тренировки.</p>;
+  const max = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 items-end" style={{ height: 160 }}>
+      {buckets.map((bucket) => (
+        <div key={bucket.weekStart} className="flex flex-col items-center gap-2 h-full justify-end">
+          <span className="text-sm font-semibold">{bucket.count}</span>
+          <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, (bucket.count / max) * 100)}px`, background: "linear-gradient(180deg,var(--accent),var(--secondary-accent))" }} />
+          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>{bucket.weekStart.slice(5)}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+const BroadcastComposer = ({ clients, text, onTextChange, selectedIds, onToggleClient, onSend, status, isSending }: { clients: Client[]; text: string; onTextChange: (value: string) => void; selectedIds: string[]; onToggleClient: (id: string) => void; onSend: () => void; status: string; isSending: boolean }) => (
+  <div className="mt-5 app-card rounded-2xl p-5">
+    <h3 className="text-xl font-bold">Написать клиентам</h3>
+    <p className="text-sm mt-1 mb-4" style={{ color: "var(--ink-2)" }}>Сообщение придёт клиенту в кабинет (вкладка «Связь») и как push-уведомление, если он его включил.</p>
+    {!clients.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Клиентов пока нет.</p>}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+      {clients.map((client) => (
+        <label key={client.id} className="app-card rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition hover:bg-white/[.04]">
+          <input type="checkbox" checked={selectedIds.includes(client.id)} onChange={() => onToggleClient(client.id)} />
+          <span>{client.name}</span>
+        </label>
+      ))}
+    </div>
+    <TextArea label="Текст сообщения" value={text} onChange={onTextChange} rows={3} />
+    <button type="button" disabled={!text.trim() || !selectedIds.length || isSending} onClick={onSend} className="btn btn-primary btn-md mt-4"><Send size={16} /> {isSending ? "Отправляем..." : `Отправить ${selectedIds.length ? `(${selectedIds.length})` : ""}`}</button>
+    {status && <p className="mt-3 text-sm" style={{ color: "var(--accent)" }}>{status}</p>}
+  </div>
+);
 const ApplicationsList = ({ applications, clients, onCreateClient, onDeleteApplication }: { applications: Application[]; clients: Client[]; onCreateClient: (application: Application) => void; onDeleteApplication: (application: Application) => void }) => {
   if (!applications.length) return <p style={{ color: "var(--ink-2)" }}>Заявок пока нет.</p>;
 

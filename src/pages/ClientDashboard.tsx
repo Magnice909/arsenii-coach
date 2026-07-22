@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Apple, CalendarDays, CheckCircle2, ClipboardList, Dumbbell, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Send, TrendingUp, X, type LucideIcon } from "lucide-react";
+import { Apple, Award, CalendarDays, CheckCircle2, ClipboardList, Dumbbell, Flame, History as HistoryIcon, LogOut, MessageCircle, MoreHorizontal, Plus, Scale, Send, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { enablePushNotifications, sendCoachPush } from "../lib/push";
-import { addDaysToISO, CompletionHistoryItem, StrengthRecord, createNotification, createStrengthRecord, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, getCompletionForToday, getDayWorkout, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
-import { Client, DayWorkout, getUser, logout, Workout } from "../lib/storage";
+import { addDaysToISO, BodyWeightRecord, CompletionHistoryItem, StrengthRecord, createBodyWeightRecord, createNotification, createStrengthRecord, fetchClientBodyWeightRecords, fetchClientCompletionHistory, fetchClientData, fetchClientStrengthRecords, fetchCurrentPlanPeriod, fetchMyNotifications, getCompletionForToday, getDayWorkout, markNotificationRead, markWorkoutCompleted, PlanPeriod, weekDays } from "../lib/db";
+import { Client, DayWorkout, getUser, logout, Message, Workout } from "../lib/storage";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errors";
 import CalendarView from "../components/CalendarView";
@@ -47,6 +47,8 @@ const ClientDashboard = () => {
   const [completedToday, setCompletedToday] = useState(false);
   const [history, setHistory] = useState<CompletionHistoryItem[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
+  const [bodyWeightRecords, setBodyWeightRecords] = useState<BodyWeightRecord[]>([]);
+  const [notifications, setNotifications] = useState<Message[]>([]);
   const [pushStatus, setPushStatus] = useState("");
   const [calendarEntries, setCalendarEntries] = useState<Map<string, CalendarWorkoutEntry[]>>(new Map());
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -92,6 +94,27 @@ const ClientDashboard = () => {
   // тренировок, которых по факту уже нет — а «Сегодня» честно говорило, что
   // плана нет, и это выглядело как противоречие/баг.
   const activeWeeklyPlan = useMemo(() => (currentPeriod && workout?.weeklyTemplate ? Object.fromEntries(Object.keys(workout.weeklyTemplate).map((day) => [day, workout.id])) : {}), [currentPeriod, workout]);
+  // Серия — сколько подряд запланированных тренировочных дней (по шаблону
+  // активного периода, дни отдыха не считаются) выполнено без пропуска,
+  // от начала периода до сегодня. Пропущенный в прошлом день сбрасывает
+  // счётчик; сегодняшний ещё не пропущен, пока день не закончился.
+  const streak = useMemo(() => {
+    if (!currentPeriod || !workout?.weeklyTemplate) return 0;
+    const todayIso = toISODate(new Date());
+    let count = 0;
+    for (let iso = currentPeriod.startDate; iso <= todayIso; iso = addDaysToISO(iso, 1)) {
+      const dayName = weekDays[(new Date(iso + "T00:00:00").getDay() + 6) % 7];
+      const dayWorkout = getDayWorkout(workout, dayName);
+      if (!dayWorkout || !dayWorkout.exercises.length) continue;
+      if (iso === todayIso) {
+        if (completedToday) count += 1;
+        continue;
+      }
+      const done = history.some((item) => item.workoutId === currentPeriod.workoutId && item.dayOfWeek === dayName && item.completedDate === iso);
+      count = done ? count + 1 : 0;
+    }
+    return count;
+  }, [currentPeriod, workout, history, completedToday]);
   const nextWorkoutLabel = (() => {
     if (periodLoading) return "Загрузка...";
     if (!currentPeriod || !workout?.weeklyTemplate) return "План не назначен";
@@ -156,7 +179,9 @@ const ClientDashboard = () => {
           setWorkouts(data.workouts);
           setHistory(await fetchClientCompletionHistory(data.client.id, user.id));
           setStrengthRecords(await fetchClientStrengthRecords(data.client.id, user.id));
+          setBodyWeightRecords(await fetchClientBodyWeightRecords(data.client.id, user.id));
         }
+        setNotifications(await fetchMyNotifications());
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить план клиента");
       } finally {
@@ -165,6 +190,17 @@ const ClientDashboard = () => {
     };
     load();
   }, [user?.id, refreshKey]);
+
+  const markNotificationSeen = async (notificationId: string) => {
+    const next = notifications.filter((message) => message.id !== notificationId);
+    setNotifications(next);
+    try {
+      await markNotificationRead(notificationId);
+    } catch {
+      // Неважно: список уже обновлён локально, а при следующем обновлении
+      // вкладки notifications перезагрузятся из базы и синхронизируются сами.
+    }
+  };
 
   const enableClientPush = async () => {
     try {
@@ -256,13 +292,25 @@ const ClientDashboard = () => {
           <div><div className="eyebrow">Кабинет клиента</div><h1 className="mt-2 text-3xl md:text-4xl font-extrabold tracking-[-.02em]">Привет, {user?.name || client.name}</h1><p className="mt-1" style={{ color: "var(--ink-2)" }}>Telegram: {user?.telegram || client.telegram}</p></div>
         </header>
 
-        {tab === "today" && <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>}
+        {tab === "today" && <div className="space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="stat-tile glass rounded-3xl p-5 flex items-center gap-4">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: "rgba(255,138,77,.16)", color: "#ff8a4d" }}><Flame size={22} /></span>
+              <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>Серия</p><b className="text-2xl block tracking-tight">{streak} {streak === 1 ? "день" : "дня подряд"}</b></div>
+            </div>
+            <div className="stat-tile glass rounded-3xl p-5 flex items-center gap-4">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}><TrendingUp size={22} /></span>
+              <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>За эту неделю</p><b className="text-2xl block tracking-tight">{client.progress}%</b></div>
+            </div>
+          </div>
+          <Panel title={`Сегодня: ${todayWorkout?.title || "тренировки нет"}`} subtitle={todayName}><p className="mb-4" style={{ color: "var(--ink-2)" }}>{periodLoading ? "Загрузка..." : todayWorkout ? (todayWorkout.notes || workout?.notes || "Заметок к этой тренировке нет.") : "Тренер пока не назначил активный план на сегодня."}</p>{(todayWorkout?.exercises || []).length ? <div className="space-y-3">{(todayWorkout?.exercises || []).map((e, index) => <div key={`${index}-${e}`} className="app-card rounded-2xl p-4 flex gap-3 items-center"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold" style={{ background: "rgba(104,225,253,.16)", color: "var(--accent)" }}>{index + 1}</span><span>{e}</span></div>)}</div> : <div className="app-card rounded-2xl p-4" style={{ color: "var(--ink-2)" }}>На сегодня тренировка не назначена.</div>}<button disabled={completedToday || !todayWorkout || !(todayWorkout.exercises || []).length} onClick={markDone} className={`btn btn-lg mt-5 ${completedToday ? "btn-secondary glass" : "btn-primary"}`}>{completedToday && <CheckCircle2 size={18} />}{completedToday ? "Тренировка выполнена" : !todayWorkout ? "Сегодня тренировки нет" : "Отметить тренировку"}</button></Panel>
+        </div>}
         {tab === "calendar" && <Panel title="Календарь тренировок" subtitle="ваш недельный план на датах"><CalendarView entriesByDate={calendarEntries} loading={calendarLoading} onMonthChange={loadCalendarMonth} renderDay={(date, entries) => <ClientCalendarDay date={date} entries={entries} />} /></Panel>}
         {tab === "plan" && <Panel title="Мой план на неделю" subtitle="назначено тренером">{!periodLoading && (currentPeriod ? <p className="text-sm mb-4" style={{ color: "var(--accent)" }}>Активен сейчас: {currentPeriod.startDate} – {currentPeriod.endDate}</p> : <p className="text-sm mb-4" style={{ color: "var(--ink-3)" }}>Сейчас нет активного плана на текущую неделю — тренер ещё не назначил даты.</p>)}<WeeklySchedule weeklyPlan={activeWeeklyPlan} workouts={workouts} currentPeriod={currentPeriod} history={history} /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5"><Info title="Цель" value={client.goal || "Арсений пока не указал цель"} /><Info title="Следующая тренировка" value={nextWorkoutLabel} /></div></Panel>}
         {tab === "history" && <Panel title="Пройденные тренировки" subtitle="история выполненных планов"><CompletionHistory history={history} /></Panel>}
-                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
+                {tab === "progress" && <Panel title="Мой прогресс" subtitle="силовые показатели и выполнение"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Metric title="Выполнение" value={`${client.progress}%`} /><Metric title="Статус" value={client.status} /><Metric title="План" value={workout?.title || "Не назначен"} /></div><div className="mt-5 h-4 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.08)" }}><div className="h-full" style={{ width: `${client.progress}%`, background: "linear-gradient(90deg,var(--accent),var(--secondary-accent))" }} /></div><Achievements streak={streak} completionsCount={history.length} strengthRecords={strengthRecords} /><BodyWeightProgress client={client} userId={user?.id || ""} records={bodyWeightRecords} onAdd={(record) => setBodyWeightRecords((current) => [...current, record])} /><StrengthProgress client={client} userId={user?.id || ""} workouts={workouts} records={strengthRecords} onAdd={(record) => setStrengthRecords((current) => [...current, record])} /></Panel>}
         {tab === "nutrition" && <Panel title="Питание" subtitle="рекомендации от тренера"><p style={{ color: "var(--ink-2)" }}>{client.nutrition || "Арсений пока не добавил рекомендации по питанию."}</p></Panel>}
-        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
+        {tab === "chat" && <Panel title="Связь с тренером" subtitle="связь через Telegram"><p style={{ color: "var(--ink-2)" }}>Все контакты на сайте переведены на Telegram.</p><a className="btn btn-primary btn-lg mt-5" href="https://t.me/president_h" target="_blank" rel="noreferrer"><Send size={17} /> Написать в Telegram @president_h</a><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Сообщения от тренера</h3><p className="mt-2 text-sm mb-4" style={{ color: "var(--ink-2)" }}>Если Арсений напишет через кабинет, сообщение появится здесь.</p>{!notifications.length && <p className="text-sm" style={{ color: "var(--ink-3)" }}>Новых сообщений пока нет.</p>}<div className="space-y-3">{notifications.map((m) => <div key={m.id} className="app-card rounded-2xl p-4"><b>{m.from}</b><p className="mt-1" style={{ color: "var(--ink-2)" }}>{m.text}</p><span className="text-xs" style={{ color: "var(--ink-3)" }}>{m.time}</span><button onClick={() => markNotificationSeen(m.id)} className="btn btn-secondary btn-sm glass mt-3">Прочитано</button></div>)}</div></div><div className="app-card rounded-2xl p-5 mt-5"><h3 className="text-xl font-bold">Уведомления о тренировках</h3><p className="mt-2 text-sm" style={{ color: "var(--ink-2)" }}>Включи уведомления на этом устройстве, чтобы получать сообщения о новом или обновлённом плане. На iPhone сайт должен быть сохранён на экран «Домой».</p><button onClick={enableClientPush} className="btn btn-primary btn-md mt-4">Включить уведомления клиенту</button>{pushStatus && <p className="mt-3 text-sm" style={{ color: pushStatus.includes("включ") ? "var(--accent)" : "#ff8a98" }}>{pushStatus}</p>}</div></Panel>}
       </section>
     </main>
   );
@@ -329,6 +377,112 @@ const muscleGroups = ["Грудь", "Спина", "Ноги", "Плечи", "Р�
 // нужно только название, иначе оно не совпадает с уже сохранёнными записями
 // («Жим лёжа»).
 const stripSetsReps = (exercise: string) => exercise.replace(/\s*\d+\s*[xхX×]\s*\d+\s*$/u, "").trim();
+
+// Достижения считаются каждый раз заново из уже загруженных данных (история,
+// силовые записи, серия) — не хранятся отдельной сущностью в базе, поэтому
+// не могут разойтись с фактическим состоянием и не требуют новой таблицы.
+const hasImprovedRecord = (records: StrengthRecord[]): boolean => {
+  const byExercise = new Map<string, StrengthRecord[]>();
+  for (const record of records) {
+    const list = byExercise.get(record.exerciseName) || [];
+    list.push(record);
+    byExercise.set(record.exerciseName, list);
+  }
+  for (const list of byExercise.values()) {
+    const sorted = [...list].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
+    if (sorted.length >= 2 && sorted[sorted.length - 1].maxWeight > sorted[sorted.length - 2].maxWeight) return true;
+  }
+  return false;
+};
+
+const Achievements = ({ streak, completionsCount, strengthRecords }: { streak: number; completionsCount: number; strengthRecords: StrengthRecord[] }) => {
+  const badges = [
+    { label: "Первая тренировка", earned: completionsCount >= 1 },
+    { label: "10 тренировок", earned: completionsCount >= 10 },
+    { label: "25 тренировок", earned: completionsCount >= 25 },
+    { label: "Серия 7 дней", earned: streak >= 7 },
+    { label: "Новый рекорд", earned: hasImprovedRecord(strengthRecords) },
+  ];
+  return (
+    <div className="app-card rounded-2xl p-5 mt-5">
+      <h3 className="text-xl font-bold">Достижения</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+        {badges.map((badge) => (
+          <div key={badge.label} className="rounded-2xl p-4 flex flex-col items-center text-center gap-2" style={{ background: badge.earned ? "rgba(104,225,253,.10)" : "rgba(255,255,255,.03)", border: badge.earned ? "1px solid rgba(104,225,253,.28)" : "1px solid var(--line)", opacity: badge.earned ? 1 : 0.45 }}>
+            <Award size={22} style={{ color: badge.earned ? "var(--accent)" : "var(--ink-3)" }} />
+            <span className="text-sm font-semibold">{badge.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const BodyWeightProgress = ({ client, userId, records, onAdd }: { client: Client; userId: string; records: BodyWeightRecord[]; onAdd: (record: BodyWeightRecord) => void }) => {
+  const [weightKg, setWeightKg] = useState("");
+  const [recordedDate, setRecordedDate] = useState(toISODate(new Date()));
+  const [status, setStatus] = useState("");
+  const sorted = [...records].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
+
+  const addRecord = async () => {
+    setStatus("");
+    const weight = Number(weightKg);
+    if (!weight || weight <= 0) {
+      setStatus("Укажи вес больше 0");
+      return;
+    }
+    try {
+      const created = await createBodyWeightRecord({ clientId: client.id, userId, weightKg: weight, recordedDate });
+      onAdd(created);
+      setWeightKg("");
+      setStatus("Запись добавлена");
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Не удалось добавить запись"));
+    }
+  };
+
+  return (
+    <div className="app-card rounded-2xl p-5 mt-5">
+      <h3 className="text-2xl font-bold flex items-center gap-2"><Scale size={20} /> Вес тела</h3>
+      <p className="text-sm mt-1" style={{ color: "var(--ink-2)" }}>Отмечай вес раз в несколько дней, чтобы видеть динамику отдельно от силовых показателей.</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Вес, кг<input type="number" min="0" step="0.1" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} className="field-input" /></label>
+        <label className="block text-sm" style={{ color: "var(--ink-3)" }}>Дата<input type="date" value={recordedDate} onChange={(event) => setRecordedDate(event.target.value)} className="field-input" style={{ fontSize: "16px", WebkitAppearance: "none" }} /></label>
+        <div className="flex items-end"><button onClick={addRecord} className="btn btn-primary btn-md w-full"><Plus size={16} /> Добавить</button></div>
+      </div>
+      {status && <p className="mt-3 text-sm" style={{ color: status.includes("добавлена") ? "var(--accent)" : "#ff8a98" }}>{status}</p>}
+      <BodyWeightChart records={sorted} />
+    </div>
+  );
+};
+
+const BodyWeightChart = ({ records }: { records: BodyWeightRecord[] }) => {
+  if (!records.length) return <p className="mt-4" style={{ color: "var(--ink-2)" }}>Пока нет записей веса.</p>;
+  const width = 640;
+  const height = 220;
+  const padding = 34;
+  const weights = records.map((record) => record.weightKg);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = Math.max(1, max - min);
+  const points = records.map((record, index) => {
+    const x = records.length === 1 ? width / 2 : padding + (index * (width - padding * 2)) / (records.length - 1);
+    const y = height - padding - ((record.weightKg - min) / range) * (height - padding * 2);
+    return { x, y, record };
+  });
+  const diff = records[records.length - 1].weightKg - records[0].weightKg;
+  return (
+    <div className="mt-4">
+      <div className="mb-3 text-sm" style={{ color: "var(--ink-2)" }}>{records.length > 1 ? `Изменение: ${diff > 0 ? "+" : ""}${diff.toFixed(1)} кг` : "Добавь ещё одну запись, чтобы увидеть динамику"}</div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full rounded-3xl" style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--line)" }} role="img" aria-label="Диаграмма веса тела">
+        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,.18)" />
+        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,.18)" />
+        <polyline fill="none" stroke="var(--accent)" strokeWidth="4" points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
+        {points.map((point) => <g key={`${point.record.id}-${point.x}`}><circle cx={point.x} cy={point.y} r="6" fill="var(--accent)" /><text x={point.x} y={point.y - 12} textAnchor="middle" fontSize="13" fill="white">{point.record.weightKg} кг</text></g>)}
+      </svg>
+    </div>
+  );
+};
 
 const StrengthProgress = ({ client, userId, workouts, records, onAdd }: { client: Client; userId: string; workouts: Workout[]; records: StrengthRecord[]; onAdd: (record: StrengthRecord) => void }) => {
   const exerciseOptions = Array.from(new Set(workouts.flatMap((workout) => Object.values(workout.weeklyTemplate || {}) as DayWorkout[]).flatMap((day) => day.exercises || []).map(stripSetsReps))).filter(Boolean);
